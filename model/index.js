@@ -1,7 +1,7 @@
 const { Sequelize, DataTypes } = require('sequelize');
 
 const sequelize = new Sequelize('webrtc_9ecp', 'webrtcuser', 'Hp8OJSY9UfH1IKlFAQ1ttoKQ24XIjKro', {
-  host: 'dpg-d0ot65je5dus73d89vig-a',
+  host:'dpg-d0ot65je5dus73d89vig-a',
   dialect: 'postgres',   // yahan dialect ko 'postgres' kar diya
   logging: false,
   port: 5432             // agar port change nahi kiya toh default 5432 hota hai

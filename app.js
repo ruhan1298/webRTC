@@ -50,11 +50,13 @@ app.use('/room', roomRouter);
 
 // Sync DB Models
 const callog = require('./model/calllog');
-callog.sync({alter:true})
+callog.sync({force:true})
 const room = require('./model/room');
-room.sync({alter:true})
+room.sync({force:true})
 // Removed duplicate declaration of io
 
+const user = require('./model/user');
+user.sync({force:true})
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
