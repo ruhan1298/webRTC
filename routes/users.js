@@ -5,7 +5,7 @@ const { JWT_SECRET } = require('../config/key');
 const User = require('../model/user');
 const { Op } = require('sequelize');
 const bcrypt = require('bcrypt');
-const userAuth = require('../middleware/userAuth');
+const userAuth = require('../middleware/userAuth')
 const calling = require('../model/calllog');
 
 /* GET users listing. */
