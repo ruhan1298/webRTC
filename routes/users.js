@@ -3,7 +3,6 @@ var router = express.Router();
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET } = require('../config/key');
 const User = require('../model/user');
-const UserAuth = require('../middleware/userAuth');
 const { Op } = require('sequelize');
 const bcrypt = require('bcrypt');
 const userAuth = require('../middleware/userAuth');
