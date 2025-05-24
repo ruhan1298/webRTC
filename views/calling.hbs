@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Socket.IO Call Test</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+  <h2>📞 Call Test Interface</h2>
+
+  <label>User ID: <input type="text" id="userId" placeholder="Enter your ID" /></label>
+  <button onclick="connectUser()">Connect</button>
+  <br /><br />
+
+  <label>Receiver ID: <input type="text" id="receiverId" placeholder="Enter receiver ID" /></label>
+  <br /><br />
+
+  <label>Duration (minutes): 
+    <input type="number" id="callDuration" placeholder="1" min="1" max="30" value="1" />
+  </label>
+  <br /><br />
+
+  <button onclick="initiateCall()">📤 Initiate Call</button>
+  <button onclick="acceptCall()">✅ Accept Call</button>
+  <button onclick="rejectCall()">❌ Reject Call</button>
+  <button onclick="cancelCall()">🛑 Cancel Call</button>
+  <button onclick="timeoutCall()">⌛ Timeout Call</button>
+  <button onclick="endCall()">📴 End Call</button>
+  <br /><br />
+
+  <p id="status" style="font-weight:bold;color:gray">Status: Not connected</p>
+  <p id="callIdHolder"></p>
+
+  <div id="logs" style="white-space: pre-wrap; background: #f5f5f5; padding: 10px; border: 1px solid #ccc; max-height: 300px; overflow-y: auto;"></div>
+
+  <h3>🎥 Local Video Preview:</h3>
+  <video id="localVideo" autoplay playsinline muted style="width: 300px; border: 1px solid #999; border-radius: 8px;"></video>
+  <br />
+  <button onclick="startCamera()">🎬 Start Camera Manually</button>
+
+  <script>
+    let socket;
+    let currentCallId = null;
+    let localStream;
+    let callTimer;
+
+    function log(msg) {
+      const logs = document.getElementById("logs");
+      logs.textContent += msg + "\n";
+      logs.scrollTop = logs.scrollHeight;
+    }
+
+    function updateStatus(text, color = "black") {
+      const statusEl = document.getElementById("status");
+      statusEl.textContent = text;
+      statusEl.style.color = color;
+    }
+
+    function connectUser() {
+      const userId = document.getElementById("userId").value.trim();
+      if (!userId) return alert("Please enter a User ID.");
+
+      log("🔌 Attempting to connect...");
+      updateStatus("🔌 Attempting to connect...", "orange");
+
+      socket = io("http://localhost:3002");
+
+      socket.on("connect", () => {
+        log(`✅ Connected: ${socket.id}`);
+        updateStatus("✅ Connected", "green");
+        socket.emit("register", userId);
+      });
+
+      socket.on("disconnect", () => {
+        log("❌ Disconnected");
+        updateStatus("❌ Disconnected", "red");
+      });
+
+      socket.on("call:incoming", ({ callerId, callType, callId }) => {
+        currentCallId = callId;
+        document.getElementById("callIdHolder").textContent =
+          `📞 Incoming ${callType} call from ${callerId}, Call ID: ${callId}`;
+        log(`📞 Incoming call: ${JSON.stringify({ callerId, callType, callId })}`);
+      });
+
+      socket.on("call:accepted", () => {
+        log("✅ Call accepted by other user.");
+        startAutoEndTimer();
+      });
+
+      socket.on("call:rejected", () => {
+        log("❌ Your call was rejected.");
+        resetCall();
+      });
+
+      socket.on("call:missed", (data) => {
+        log("📭 Missed call: " + JSON.stringify(data));
+        alert("Call missed! The user is currently busy or did not answer.");
+        resetCall();
+      });
+
+      socket.on("call:cancelled", () => {
+        log("🛑 Call cancelled.");
+        resetCall();
+      });
+
+      socket.on("call:busy", (data) => {
+        log("📞 User is busy: " + JSON.stringify(data));
+        alert("The user you are trying to call is currently busy.");
+        resetCall();
+      });
+
+      socket.on("call:noAnswer", (data) => {
+        log("⌛ No answer: " + JSON.stringify(data));
+        alert("No answer from the other user.");
+        resetCall();
+      });
+
+      socket.on("call:ended", ({ callId, duration, status }) => {
+        log(`📴 Call ${callId} ended. Duration: ${duration} seconds. Status: ${status}`);
+        document.getElementById("callIdHolder").textContent =
+          `Call ended. Duration: ${duration} sec, Status: ${status}`;
+        resetCall();
+      });
+
+      socket.onAny((event, data) => {
+        log(`📨 Event: ${event} - ${JSON.stringify(data)}`);
+      });
+    }
+
+    function initiateCall() {
+      const callerId = document.getElementById("userId").value.trim();
+      const receiverId = document.getElementById("receiverId").value.trim();
+      const callType = "video";
+
+      if (!callerId || !receiverId) return alert("Enter both caller and receiver IDs");
+
+      startCamera().then(() => {
+        socket.emit("call:initiated", { callerId, receiverId, callType });
+        log("📤 Call initiated...");
+      }).catch((err) => {
+        log("❌ Failed to start camera before initiating call.");
+      });
+    }
+
+    function acceptCall() {
+      if (!currentCallId) return alert("No incoming call to accept.");
+
+      startCamera().then(() => {
+        socket.emit("call:accepted", { callId: currentCallId });
+        log("✅ Accepted the call.");
+        startAutoEndTimer();
+      }).catch((err) => {
+        log("❌ Failed to start camera while accepting call.");
+      });
+    }
+
+    function rejectCall() {
+      if (!currentCallId) return alert("No incoming call to reject.");
+      socket.emit("call:rejected", { callId: currentCallId });
+      log("❌ Rejected the call.");
+      resetCall();
+    }
+
+    function cancelCall() {
+      if (!currentCallId) return alert("No outgoing call to cancel.");
+      socket.emit("call:cancelled", { callId: currentCallId });
+      log("🛑 Cancelled the call.");
+      resetCall();
+    }
+
+    function timeoutCall() {
+      if (!currentCallId) return alert("No active call to timeout.");
+      socket.emit("call:timeout", { callId: currentCallId });
+      log("⌛ Timeout sent for the call.");
+      resetCall();
+    }
+
+    function endCall() {
+      if (!currentCallId) return alert("No active call to end.");
+      socket.emit("call:ended", { callId: currentCallId });
+      log("🛑 End call signal sent.");
+      resetCall();
+    }
+
+    function resetCall() {
+      currentCallId = null;
+      document.getElementById("callIdHolder").textContent = "";
+
+      if (callTimer) {
+        clearTimeout(callTimer);
+        callTimer = null;
+      }
+    }
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById("localVideo").srcObject = stream;
+        localStream = stream;
+        log("🎥 Camera & Mic access granted.");
+      } catch (err) {
+        console.error("Error accessing media devices:", err);
+        alert("❌ Could not access camera/mic.");
+        throw err;
+      }
+    }
+
+    function startAutoEndTimer() {
+      const durationInput = document.getElementById("callDuration").value;
+      const durationInMinutes = parseInt(durationInput, 10);
+
+      if (isNaN(durationInMinutes) || durationInMinutes <= 0) {
+        alert("⏱ Invalid duration. Defaulting to 1 minute.");
+        return;
+      }
+
+      log(`⏱ Call will auto-end in ${durationInMinutes} minute(s).`);
+
+      callTimer = setTimeout(() => {
+        log("⌛ Call time reached. Ending call automatically.");
+        endCall();
+      }, durationInMinutes * 60 * 1000);
+    }
+  </script>
+</body>
+</html>
