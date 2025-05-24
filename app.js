@@ -6,36 +6,37 @@ const logger = require('morgan');
 const session = require('express-session');
 const http = require('http');
 const cors = require('cors');
+
 const { Server } = require('socket.io');
 const { Op } = require('sequelize');
 
+// Sequelize Models
 const sequelize = require('./model/index');
 const User = require('./model/user');
+// User.sync({ alter: true });
+
 const CallLog = require('./model/calllog');
-const Room = require('./model/room');
-
-// Sync DB models
 CallLog.sync({ alter: true });
-Room.sync({ alter: true });
 
+// Routes
 const indexRouter = require('./routes/index');
 const usersRouter = require('./routes/users');
 const roomRouter = require('./routes/room');
-
 const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
     origin: '*',
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST']
   }
 });
 
-// View engine setup
+// View Engine Setup
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'hbs');
 
+// Middlewares
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -47,15 +48,23 @@ app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/room', roomRouter);
 
-// ================= SOCKET.IO ================= //
+// Sync DB Models
+const callog = require('./model/calllog');
+callog.sync({alter:true})
+const room = require('./model/room');
+room.sync({alter:true})
+// Removed duplicate declaration of io
+
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
+  // User registration
   socket.on("register", (userId) => {
     socket.join(userId.toString());
     console.log(`User ${userId} registered and joined room ${userId}`);
   });
 
+  // Call initiation
   socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
     try {
       const receiverSockets = await io.in(receiverId.toString()).fetchSockets();
@@ -73,13 +82,13 @@ io.on("connection", (socket) => {
         io.to(callerId.toString()).emit('call:busy', { message: 'User is busy', callId: call.id });
         return;
       }
-
+      
       const call = await CallLog.create({
         callerId,
         receiverId,
         callType,
         status: 'attempted',
-        startedAt: new Date()
+        startedAt: new Date(),
       });
 
       socket.callId = call.id;
@@ -93,9 +102,14 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Call acceptance
   socket.on('call:accepted', async ({ callId }) => {
     try {
-      await CallLog.update({ status: 'connected' }, { where: { id: callId } });
+      await CallLog.update(
+        { status: 'connected' },
+        { where: { id: callId } }
+      );
+
       const call = await CallLog.findByPk(callId);
       const callerSockets = await io.in(call.callerId.toString()).fetchSockets();
       const receiverSockets = await io.in(call.receiverId.toString()).fetchSockets();
@@ -108,6 +122,7 @@ io.on("connection", (socket) => {
     }
   });
 
+  // WebRTC signaling messages
   socket.on("webrtc:offer", ({ to, offer }) => {
     io.to(to.toString()).emit("webrtc:offer", { from: socket.id, offer });
   });
@@ -120,6 +135,7 @@ io.on("connection", (socket) => {
     io.to(to.toString()).emit("webrtc:ice-candidate", { from: socket.id, candidate });
   });
 
+  // Call rejection
   socket.on("call:rejected", async ({ callId }) => {
     try {
       const call = await CallLog.findByPk(callId);
@@ -133,6 +149,7 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Call cancellation
   socket.on("call:cancelled", async ({ callId }) => {
     try {
       const call = await CallLog.findByPk(callId);
@@ -145,6 +162,7 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Call timeout
   socket.on("call:timeout", async ({ callId }) => {
     try {
       const call = await CallLog.findByPk(callId);
@@ -158,11 +176,15 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Call ending
   socket.on('call:ended', async ({ callId }) => {
     try {
       const call = await CallLog.findByPk(callId);
       if (call) {
-        await call.update({ status: 'completed', endedAt: new Date() });
+        await call.update({
+          status: 'completed',
+          endedAt: new Date(),
+        });
 
         const callerSockets = await io.in(call.callerId.toString()).fetchSockets();
         const receiverSockets = await io.in(call.receiverId.toString()).fetchSockets();
@@ -177,6 +199,7 @@ io.on("connection", (socket) => {
     }
   });
 
+  // User disconnection
   socket.on("disconnect", async () => {
     console.log("User disconnected:", socket.id);
     if (socket.callId) {
@@ -193,14 +216,47 @@ io.on("connection", (socket) => {
   });
 });
 
-// 404 and error handler
-app.use((req, res, next) => next(createError(404)));
+// ===================== ROUTES ===================== //
+// app.get('/calls/:userId', async (req, res) => {
+//   try {
+//     const { userId } = req.params;
 
+//     const calls = await CallLog.findAll({
+//       where: {
+//         [Op.or]: [
+//           { callerId: userId },
+//           { receiverId: userId }
+//         ]
+//       },
+//       order: [['startedAt', 'DESC']]
+//     });
+
+//     res.json(calls);
+//   } catch (err) {
+//     console.error('Error fetching call logs:', err);
+//     res.status(500).json({ error: 'Internal Server Error' });
+//   }
+// });
+
+// 404 handler
+app.use((req, res, next) => {
+  next(createError(404));
+});
+
+// Error handler
 app.use((err, req, res, next) => {
   res.locals.message = err.message;
   res.locals.error = req.app.get('env') === 'development' ? err : {};
+
   res.status(err.status || 500);
   res.render('error');
 });
 
-module.exports = { app, server };
+// Start server
+const PORT = 3000;
+server.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
+
+
+module.exports = app;
