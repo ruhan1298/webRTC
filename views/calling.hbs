@@ -63,7 +63,7 @@
       log("🔌 Attempting to connect...");
       updateStatus("🔌 Attempting to connect...", "orange");
 
-      socket = io("http://localhost:3002");
+      socket = io("http://localhost:3000");
 
       socket.on("connect", () => {
         log(`✅ Connected: ${socket.id}`);
