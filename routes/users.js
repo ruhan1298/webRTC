@@ -12,6 +12,55 @@ const calling = require('../model/calllog');
 router.get('/', function(req, res, next) {
   res.send('respond with a resource');
 });
+router.post('/register', async function(req, res) {
+  try {
+      const { email, password, Name, mobilenumber,  } = req.body;
+
+      // Check if the user already exists
+      const existingUser = await User.findOne({ where: { email } });
+      if (existingUser) {
+          return res.status(400).json({ status: 1, message: 'User already exists' });
+      }
+
+      // Hash the password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Create a new user
+      const newUser = await User.create({
+          email,
+          password: hashedPassword,
+          Name,
+          mobilenumber,
+      
+      });
+
+      // Create a JWT token
+      const token = jwt.sign(
+          { id: newUser.id }, // Payload
+          JWT_SECRET, // Secret key
+          { expiresIn: '1000hr' } // Token expiration
+      );
+
+      // Send response
+      return res.status(201).json({
+          status: 1,
+          message: 'Registration Successful',
+          data: {
+              id: newUser.id.toString(),
+              Name: newUser.Name,
+              LastName: newUser.LastName,
+              email: newUser.email,
+              mobilenumber: newUser.mobilenumber,
+              token: token,
+              deviceToken: newUser.deviceToken,
+              Device_type: newUser.Device_type
+          },
+      });
+  } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Internal Server Error' });
+  }
+})
 router.post('/login', async function(req, res) {
   try {
       const { email, password } = req.body;
