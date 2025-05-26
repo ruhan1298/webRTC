@@ -25,13 +25,12 @@ const roomRouter = require('./routes/room');
 const app = express();
 const server = http.createServer(app);
 
-const io = require('socket.io')(server, {
+const io = new Server(server, {
   cors: {
-    origin: 'https://webrtc-1-pi3s.onrender.com',
+    origin: '*',
     methods: ['GET', 'POST']
   }
 });
-
 
 // View Engine Setup
 app.set('views', path.join(__dirname, 'views'));
