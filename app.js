@@ -25,12 +25,6 @@ const roomRouter = require('./routes/room');
 const app = express();
 const server = http.createServer(app);
 
-const io = new Server(server, {
-  cors: {
-    origin: "https://webrtc-1-pi3s.onrender.com", // Apne exact domain ka URL do
-    methods: ['GET', 'POST']
-  }
-});
 
 // View Engine Setup
 app.set('views', path.join(__dirname, 'views'));
@@ -57,6 +51,17 @@ const room = require('./model/room');
 
 const user = require('./model/user');
 // user.sync({force:true})
+
+
+const io = require('socket.io')(server, {
+  cors: {
+    origin: 'https://webrtc-1-pi3s.onrender.com',
+    methods: ['GET', 'POST']
+  }
+});
+
+
+
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 

@@ -63,9 +63,8 @@
       log("🔌 Attempting to connect...");
       updateStatus("🔌 Attempting to connect...", "orange");
 
-const socket = io('https://webrtc-1-pi3s.onrender.com', {
-  transports: ['websocket', 'polling'],
-});
+const socket = io("https://webrtc-1-pi3s.onrender.com");
+
 
       socket.on("connect_error", (err) => {
         log(`❌ Connection error: ${err.message}`);
