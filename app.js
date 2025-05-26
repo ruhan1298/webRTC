@@ -27,7 +27,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: "https://webrtc-1-pi3s.onrender.com", // Apne exact domain ka URL do
     methods: ['GET', 'POST']
   }
 });
