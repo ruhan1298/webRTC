@@ -63,9 +63,12 @@
       log("🔌 Attempting to connect...");
       updateStatus("🔌 Attempting to connect...", "orange");
 
-      socket = io("https://webrtc-1-pi3s.onrender.com", {
-        transports: ["websocket"],
-        query: { userId }
+   socket = io("https://webrtc-1-pi3s.onrender.com", {
+  transports: ["websocket"]
+});
+      socket.on("connect_error", (err) => {
+        log(`❌ Connection error: ${err.message}`);
+        updateStatus(`❌ Connection error: ${err.message}`, "red");
       });
 
       socket.on("connect", () => {
