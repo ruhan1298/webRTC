@@ -65,13 +65,13 @@ io.on("connection", (socket) => {
     socket.join(userId.toString());
     console.log(`User ${userId} registered and joined room ${userId}`);
   });
-
+ 
   // Call initiation
   socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
     try {
       const receiverSockets = await io.in(receiverId.toString()).fetchSockets();
       const receiverBusy = receiverSockets.some(s => s.isBusy);
-
+ 
       if (receiverBusy) {
         const call = await CallLog.create({
           callerId,
@@ -84,7 +84,7 @@ io.on("connection", (socket) => {
         io.to(callerId.toString()).emit('call:busy', { message: 'User is busy', callId: call.id });
         return;
       }
-      
+     
       const call = await CallLog.create({
         callerId,
         receiverId,
@@ -92,7 +92,7 @@ io.on("connection", (socket) => {
         status: 'attempted',
         startedAt: new Date(),
       });
-
+ 
       socket.callId = call.id;
       io.to(receiverId.toString()).emit('call:incoming', {
         callerId,
@@ -103,7 +103,7 @@ io.on("connection", (socket) => {
       console.error('Call initiation error:', err);
     }
   });
-
+ 
   // Call acceptance
   socket.on('call:accepted', async ({ callId }) => {
     try {
@@ -111,32 +111,32 @@ io.on("connection", (socket) => {
         { status: 'connected' },
         { where: { id: callId } }
       );
-
+ 
       const call = await CallLog.findByPk(callId);
       const callerSockets = await io.in(call.callerId.toString()).fetchSockets();
       const receiverSockets = await io.in(call.receiverId.toString()).fetchSockets();
       callerSockets.forEach(s => s.isBusy = true);
       receiverSockets.forEach(s => s.isBusy = true);
-
+ 
       io.to(call.callerId.toString()).emit('call:accepted');
     } catch (err) {
       console.error('Call acceptance error:', err);
     }
   });
-
+ 
   // WebRTC signaling messages
   socket.on("webrtc:offer", ({ to, offer }) => {
     io.to(to.toString()).emit("webrtc:offer", { from: socket.id, offer });
   });
-
+ 
   socket.on("webrtc:answer", ({ to, answer }) => {
     io.to(to.toString()).emit("webrtc:answer", { from: socket.id, answer });
   });
-
+ 
   socket.on("webrtc:ice-candidate", ({ to, candidate }) => {
     io.to(to.toString()).emit("webrtc:ice-candidate", { from: socket.id, candidate });
   });
-
+ 
   // Call rejection
   socket.on("call:rejected", async ({ callId }) => {
     try {
@@ -150,7 +150,7 @@ io.on("connection", (socket) => {
       console.error("Call rejection error:", err);
     }
   });
-
+ 
   // Call cancellation
   socket.on("call:cancelled", async ({ callId }) => {
     try {
@@ -163,7 +163,7 @@ io.on("connection", (socket) => {
       console.error("Call cancel error:", err);
     }
   });
-
+ 
   // Call timeout
   socket.on("call:timeout", async ({ callId }) => {
     try {
@@ -177,7 +177,7 @@ io.on("connection", (socket) => {
       console.error("Call timeout error:", err);
     }
   });
-
+ 
   // Call ending
   socket.on('call:ended', async ({ callId }) => {
     try {
@@ -187,12 +187,12 @@ io.on("connection", (socket) => {
           status: 'completed',
           endedAt: new Date(),
         });
-
+ 
         const callerSockets = await io.in(call.callerId.toString()).fetchSockets();
         const receiverSockets = await io.in(call.receiverId.toString()).fetchSockets();
         callerSockets.forEach(s => s.isBusy = false);
         receiverSockets.forEach(s => s.isBusy = false);
-
+ 
         io.to(call.callerId.toString()).emit('call:ended', { callId });
         io.to(call.receiverId.toString()).emit('call:ended', { callId });
       }
@@ -200,7 +200,8 @@ io.on("connection", (socket) => {
       console.error('Call ended error:', err);
     }
   });
-
+ 
+ 
   // User disconnection
   socket.on("disconnect", async () => {
     console.log("User disconnected:", socket.id);
