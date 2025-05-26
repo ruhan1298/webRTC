@@ -6,6 +6,7 @@ const logger = require('morgan');
 const session = require('express-session');
 const http = require('http');
 const cors = require('cors');
+
 const { Server } = require('socket.io');
 const { Op } = require('sequelize');
 
@@ -20,7 +21,7 @@ CallLog.sync({ alter: true });
 // Routes
 const indexRouter = require('./routes/index');
 const usersRouter = require('./routes/users');
-
+const roomRouter = require('./routes/room');
 const app = express();
 const server = http.createServer(app);
 
@@ -45,12 +46,17 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
+app.use('/room', roomRouter);
 
 // Sync DB Models
 const callog = require('./model/calllog');
-callog.sync({alter:true})
+// callog.sync({force:true})
+const room = require('./model/room');
+// room.sync({force:true})
 // Removed duplicate declaration of io
 
+const user = require('./model/user');
+// user.sync({force:true})
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
@@ -249,11 +255,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-// const PORT = process.env.PORT || 3002;
-// server.listen(PORT, () => {
-//   console.log(`Server listening on port ${PORT}`);
-// });
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
