@@ -2,9 +2,9 @@
   "name": "web-rtc",
   "version": "0.0.0",
   "private": true,
-  "scripts": {
-    "start": "node ./bin/www"
-  },
+"scripts": {
+    "start": "node app.js"
+},
   "dependencies": {
     "bcrypt": "^5.1.1",
     "cookie-parser": "~1.4.4",
