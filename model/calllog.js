@@ -1,8 +1,9 @@
 const {  DataTypes } = require('sequelize');
 const sequelize = require('../model/index')
 
+// Changess
 
-const CallLog  = sequelize.define('CallLog ', {
+const CallLog  = sequelize.define('CallLog', {
   // Model attributes are defined here
   callerId: {
     type: DataTypes.INTEGER,
