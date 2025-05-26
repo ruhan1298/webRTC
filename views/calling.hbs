@@ -40,194 +40,254 @@
 
   <script>
     let socket;
-    let currentCallId = null;
-    let localStream;
-    let callTimer;
+let currentCallId = null;
+let localStream;
+let callTimer;
 
-    function log(msg) {
-      const logs = document.getElementById("logs");
-      logs.textContent += msg + "\n";
-      logs.scrollTop = logs.scrollHeight;
-    }
+function log(msg) {
+  const logs = document.getElementById("logs");
+  logs.textContent += msg + "\n";
+  logs.scrollTop = logs.scrollHeight;
+}
 
-    function updateStatus(text, color = "black") {
-      const statusEl = document.getElementById("status");
-      statusEl.textContent = text;
-      statusEl.style.color = color;
-    }
+function updateStatus(text, color = "black") {
+  const statusEl = document.getElementById("status");
+  statusEl.textContent = text;
+  statusEl.style.color = color;
+}
 
-    function connectUser() {
-      const userId = document.getElementById("userId").value.trim();
-      if (!userId) return alert("Please enter a User ID.");
+function connectUser() {
+  const userId = document.getElementById("userId").value.trim();
+  if (!userId) return alert("Please enter a User ID.");
 
-      log("🔌 Attempting to connect...");
-      updateStatus("🔌 Attempting to connect...", "orange");
+  log("🔌 Attempting to connect...");
+  updateStatus("🔌 Attempting to connect...", "orange");
 
-const socket = io("https://webrtc-1-pi3s.onrender.com");
+  // Initialize Socket.IO connection with proper configuration
+  socket = io("https://webrtc-1-pi3s.onrender.com", {
+    transports: ['websocket', 'polling'], // Try websocket first, fallback to polling
+    timeout: 20000,
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionAttempts: 5,
+    maxReconnectionAttempts: 5
+  });
 
+  socket.on("connect_error", (err) => {
+    console.error("Connection error:", err);
+    log(`❌ Connection error: ${err.message}`);
+    updateStatus(`❌ Connection error: ${err.message}`, "red");
+  });
 
-      socket.on("connect_error", (err) => {
-        log(`❌ Connection error: ${err.message}`);
-        updateStatus(`❌ Connection error: ${err.message}`, "red");
-      });
+  socket.on("connect", () => {
+    log(`✅ Connected: ${socket.id}`);
+    updateStatus("✅ Connected", "green");
+    socket.emit("register", userId);
+  });
 
-      socket.on("connect", () => {
-        log(`✅ Connected: ${socket.id}`);
-        updateStatus("✅ Connected", "green");
-        socket.emit("register", userId);
-      });
+  socket.on("disconnect", (reason) => {
+    log(`❌ Disconnected: ${reason}`);
+    updateStatus(`❌ Disconnected: ${reason}`, "red");
+  });
 
-      socket.on("disconnect", () => {
-        log("❌ Disconnected");
-        updateStatus("❌ Disconnected", "red");
-      });
+  socket.on("reconnect", (attemptNumber) => {
+    log(`🔄 Reconnected after ${attemptNumber} attempts`);
+    updateStatus("✅ Reconnected", "green");
+    socket.emit("register", userId);
+  });
 
-      socket.on("call:incoming", ({ callerId, callType, callId }) => {
-        currentCallId = callId;
-        document.getElementById("callIdHolder").textContent =
-          `📞 Incoming ${callType} call from ${callerId}, Call ID: ${callId}`;
-        log(`📞 Incoming call: ${JSON.stringify({ callerId, callType, callId })}`);
-      });
+  socket.on("reconnect_error", (err) => {
+    log(`❌ Reconnection failed: ${err.message}`);
+    updateStatus("❌ Reconnection failed", "red");
+  });
 
-      socket.on("call:accepted", () => {
-        log("✅ Call accepted by other user.");
-        startAutoEndTimer();
-      });
+  socket.on("call:incoming", ({ callerId, callType, callId }) => {
+    currentCallId = callId;
+    document.getElementById("callIdHolder").textContent =
+      `📞 Incoming ${callType} call from ${callerId}, Call ID: ${callId}`;
+    log(`📞 Incoming call: ${JSON.stringify({ callerId, callType, callId })}`);
+  });
 
-      socket.on("call:rejected", () => {
-        log("❌ Your call was rejected.");
-        resetCall();
-      });
+  socket.on("call:accepted", ({ callId }) => {
+    log("✅ Call accepted by other user.");
+    currentCallId = callId;
+    startAutoEndTimer();
+  });
 
-      socket.on("call:missed", (data) => {
-        log("📭 Missed call: " + JSON.stringify(data));
-        alert("Call missed! The user is currently busy or did not answer.");
-        resetCall();
-      });
+  socket.on("call:rejected", ({ callId }) => {
+    log("❌ Your call was rejected.");
+    resetCall();
+  });
 
-      socket.on("call:cancelled", () => {
-        log("🛑 Call cancelled.");
-        resetCall();
-      });
+  socket.on("call:missed", (data) => {
+    log("📭 Missed call: " + JSON.stringify(data));
+    alert("Call missed! The user is currently busy or did not answer.");
+    resetCall();
+  });
 
-      socket.on("call:busy", (data) => {
-        log("📞 User is busy: " + JSON.stringify(data));
-        alert("The user you are trying to call is currently busy.");
-        resetCall();
-      });
+  socket.on("call:cancelled", ({ callId }) => {
+    log("🛑 Call cancelled.");
+    resetCall();
+  });
 
-      socket.on("call:noAnswer", (data) => {
-        log("⌛ No answer: " + JSON.stringify(data));
-        alert("No answer from the other user.");
-        resetCall();
-      });
+  socket.on("call:busy", (data) => {
+    log("📞 User is busy: " + JSON.stringify(data));
+    alert("The user you are trying to call is currently busy.");
+    resetCall();
+  });
 
-      socket.on("call:ended", ({ callId, duration, status }) => {
-        log(`📴 Call ${callId} ended. Duration: ${duration} seconds. Status: ${status}`);
-        document.getElementById("callIdHolder").textContent =
-          `Call ended. Duration: ${duration} sec, Status: ${status}`;
-        resetCall();
-      });
+  socket.on("call:noAnswer", (data) => {
+    log("⌛ No answer: " + JSON.stringify(data));
+    alert("No answer from the other user.");
+    resetCall();
+  });
 
-      socket.onAny((event, data) => {
-        log(`📨 Event: ${event} - ${JSON.stringify(data)}`);
-      });
-    }
+  socket.on("call:ended", ({ callId, duration, status }) => {
+    log(`📴 Call ${callId} ended. Duration: ${duration} seconds. Status: ${status}`);
+    document.getElementById("callIdHolder").textContent =
+      `Call ended. Duration: ${duration} sec, Status: ${status}`;
+    resetCall();
+  });
 
-    function initiateCall() {
-      const callerId = document.getElementById("userId").value.trim();
-      const receiverId = document.getElementById("receiverId").value.trim();
-      const callType = "video";
+  socket.on("error", (error) => {
+    log(`❌ Socket error: ${JSON.stringify(error)}`);
+    updateStatus("❌ Socket error", "red");
+  });
 
-      if (!callerId || !receiverId) return alert("Enter both caller and receiver IDs");
+  // Debug: Log all events
+  socket.onAny((event, data) => {
+    console.log(`📨 Event: ${event}`, data);
+    log(`📨 Event: ${event} - ${JSON.stringify(data)}`);
+  });
+}
 
-      startCamera().then(() => {
-        socket.emit("call:initiated", { callerId, receiverId, callType });
-        log("📤 Call initiated...");
-      }).catch((err) => {
-        log("❌ Failed to start camera before initiating call.");
-      });
-    }
+function initiateCall() {
+  if (!socket || !socket.connected) {
+    return alert("Not connected to server. Please connect first.");
+  }
 
-    function acceptCall() {
-      if (!currentCallId) return alert("No incoming call to accept.");
+  const callerId = document.getElementById("userId").value.trim();
+  const receiverId = document.getElementById("receiverId").value.trim();
+  const callType = "video";
 
-      startCamera().then(() => {
-        socket.emit("call:accepted", { callId: currentCallId });
-        log("✅ Accepted the call.");
-        startAutoEndTimer();
-      }).catch((err) => {
-        log("❌ Failed to start camera while accepting call.");
-      });
-    }
+  if (!callerId || !receiverId) return alert("Enter both caller and receiver IDs");
+  if (callerId === receiverId) return alert("Cannot call yourself");
 
-    function rejectCall() {
-      if (!currentCallId) return alert("No incoming call to reject.");
-      socket.emit("call:rejected", { callId: currentCallId });
-      log("❌ Rejected the call.");
-      resetCall();
-    }
+  startCamera().then(() => {
+    socket.emit("call:initiated", { callerId, receiverId, callType });
+    log("📤 Call initiated...");
+    updateStatus("📤 Calling...", "orange");
+  }).catch((err) => {
+    log("❌ Failed to start camera before initiating call.");
+    alert("Failed to access camera/microphone");
+  });
+}
 
-    function cancelCall() {
-      if (!currentCallId) return alert("No outgoing call to cancel.");
-      socket.emit("call:cancelled", { callId: currentCallId });
-      log("🛑 Cancelled the call.");
-      resetCall();
-    }
+function acceptCall() {
+  if (!currentCallId) return alert("No incoming call to accept.");
 
-    function timeoutCall() {
-      if (!currentCallId) return alert("No active call to timeout.");
-      socket.emit("call:timeout", { callId: currentCallId });
-      log("⌛ Timeout sent for the call.");
-      resetCall();
-    }
+  startCamera().then(() => {
+    socket.emit("call:accepted", { callId: currentCallId });
+    log("✅ Accepted the call.");
+    updateStatus("✅ Call accepted", "green");
+    startAutoEndTimer();
+  }).catch((err) => {
+    log("❌ Failed to start camera while accepting call.");
+    alert("Failed to access camera/microphone");
+  });
+}
 
-    function endCall() {
-      if (!currentCallId) return alert("No active call to end.");
-      socket.emit("call:ended", { callId: currentCallId });
-      log("🛑 End call signal sent.");
-      resetCall();
-    }
+function rejectCall() {
+  if (!currentCallId) return alert("No incoming call to reject.");
+  socket.emit("call:rejected", { callId: currentCallId });
+  log("❌ Rejected the call.");
+  resetCall();
+}
 
-    function resetCall() {
-      currentCallId = null;
-      document.getElementById("callIdHolder").textContent = "";
+function cancelCall() {
+  if (!currentCallId) return alert("No outgoing call to cancel.");
+  socket.emit("call:cancelled", { callId: currentCallId });
+  log("🛑 Cancelled the call.");
+  resetCall();
+}
 
-      if (callTimer) {
-        clearTimeout(callTimer);
-        callTimer = null;
-      }
-    }
+function timeoutCall() {
+  if (!currentCallId) return alert("No active call to timeout.");
+  socket.emit("call:timeout", { callId: currentCallId });
+  log("⌛ Timeout sent for the call.");
+  resetCall();
+}
 
-    async function startCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        document.getElementById("localVideo").srcObject = stream;
-        localStream = stream;
-        log("🎥 Camera & Mic access granted.");
-      } catch (err) {
-        console.error("Error accessing media devices:", err);
-        alert("❌ Could not access camera/mic.");
-        throw err;
-      }
-    }
+function endCall() {
+  if (!currentCallId) return alert("No active call to end.");
+  socket.emit("call:ended", { callId: currentCallId });
+  log("🛑 End call signal sent.");
+  resetCall();
+}
 
-    function startAutoEndTimer() {
-      const durationInput = document.getElementById("callDuration").value;
-      const durationInMinutes = parseInt(durationInput, 10);
+function resetCall() {
+  currentCallId = null;
+  document.getElementById("callIdHolder").textContent = "";
+  updateStatus("✅ Connected", "green");
 
-      if (isNaN(durationInMinutes) || durationInMinutes <= 0) {
-        alert("⏱ Invalid duration. Defaulting to 1 minute.");
-        return;
-      }
+  if (callTimer) {
+    clearTimeout(callTimer);
+    callTimer = null;
+  }
 
-      log(`⏱ Call will auto-end in ${durationInMinutes} minute(s).`);
+  // Stop local media stream
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+    document.getElementById("localVideo").srcObject = null;
+  }
+}
 
-      callTimer = setTimeout(() => {
-        log("⌛ Call time reached. Ending call automatically.");
-        endCall();
-      }, durationInMinutes * 60 * 1000);
-    }
-  </script>
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      video: true, 
+      audio: true 
+    });
+    document.getElementById("localVideo").srcObject = stream;
+    localStream = stream;
+    log("🎥 Camera & Mic access granted.");
+  } catch (err) {
+    console.error("Error accessing media devices:", err);
+    log(`❌ Could not access camera/mic: ${err.message}`);
+    alert("❌ Could not access camera/mic. Please check permissions.");
+    throw err;
+  }
+}
+
+function startAutoEndTimer() {
+  const durationInput = document.getElementById("callDuration").value;
+  const durationInMinutes = parseInt(durationInput, 10);
+
+  if (isNaN(durationInMinutes) || durationInMinutes <= 0) {
+    log("⏱ Invalid duration. Auto-end timer not set.");
+    return;
+  }
+
+  log(`⏱ Call will auto-end in ${durationInMinutes} minute(s).`);
+
+  callTimer = setTimeout(() => {
+    log("⌛ Call time reached. Ending call automatically.");
+    endCall();
+  }, durationInMinutes * 60 * 1000);
+}
+
+// Test connection
+function testConnection() {
+  fetch("https://webrtc-1-pi3s.onrender.com/health")
+    .then(response => response.json())
+    .then(data => {
+      log(`✅ Server health check: ${JSON.stringify(data)}`);
+    })
+    .catch(err => {
+      log(`❌ Server health check failed: ${err.message}`);
+    });
+} 
+ </script>
 </body>
 </html>
