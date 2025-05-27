@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>WebRTC Video Call - Fixed Version</title>
+  <title>WebRTC Video Call - Auto Permission Fix</title>
   <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <style>
     body {
@@ -104,13 +104,31 @@
       margin: 10px 0;
       border-radius: 4px;
     }
+    .permission-box {
+      background: #fffbf2;
+      border: 2px dashed #ff9800;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 10px 0;
+      text-align: center;
+    }
+    .permission-granted {
+      background: #f0f8f0;
+      border: 2px solid #4caf50;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>📞 WebRTC Video Call Test - Fixed</h2>
+    <h2>📞 WebRTC Video Call - Auto Permission Fix</h2>
+
+    <!-- Permission Status -->
+    <div id="permissionStatus" class="permission-box">
+      🎥 Click "Test Camera" to grant permissions first
+    </div>
 
     <div class="controls">
+      <button class="btn-warning" onclick="testCameraPermission()">🎥 Test Camera</button>
       <div>
         <label>Your User ID:</label>
         <input type="text" id="userId" placeholder="Enter your unique ID" />
@@ -163,6 +181,7 @@
     let targetUserId = null;
     let callTimer;
     let isCallInitiator = false;
+    let permissionGranted = false;
 
     const config = {
       iceServers: [
@@ -182,7 +201,7 @@
 
     function updateStatus(text, className = "") {
       const statusEl = document.getElementById("status");
-      statusEl.textContent = `Status: ${text}`;
+      statusEl.textContent = text;
       statusEl.className = `status ${className}`;
     }
 
@@ -194,319 +213,476 @@
       document.getElementById("remoteStatus").textContent = text;
     }
 
-    async function startCamera() {
-      if (localStream) {
-        // Already have stream, no need to restart camera
-        log("🎥 Local stream already active");
+    function updatePermissionStatus(text, granted = false) {
+      const permEl = document.getElementById("permissionStatus");
+      permEl.textContent = text;
+      if (granted) {
+        permEl.className = "permission-box permission-granted";
+      } else {
+        permEl.className = "permission-box";
+      }
+    }
+
+    // Test camera permission function
+    async function testCameraPermission() {
+      try {
+        updatePermissionStatus("🎥 Testing camera permission...", false);
+        log("🎥 Testing camera access...");
+
+        if (localStream) {
+          localStream.getTracks().forEach(track => track.stop());
+          localStream = null;
+        }
+
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            facingMode: 'user'
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+
+        const localVideo = document.getElementById("localVideo");
+        localVideo.srcObject = localStream;
+        updateLocalStatus(`Camera active (${localStream.getTracks().length} tracks)`);
+        updatePermissionStatus("✅ Camera & Microphone permissions granted! Ready for calls.", true);
+        
+        permissionGranted = true;
+        log(`✅ Camera permission granted - ${localStream.getTracks().length} tracks available`);
+        
+        // Show track details
+        localStream.getTracks().forEach(track => {
+          log(`📹 Track ready: ${track.kind} - ${track.label}`);
+        });
+
+      } catch (error) {
+        log(`❌ Camera permission error: ${error.message}`);
+        updatePermissionStatus("❌ Camera permission denied. Please allow camera access!", false);
+        updateLocalStatus("Permission denied");
+        alert(`Camera access failed: ${error.message}\n\nPlease:\n1. Allow camera permission\n2. Refresh page if needed`);
+        permissionGranted = false;
+      }
+    }
+
+    async function connectUser() {
+      const userId = document.getElementById("userId").value.trim();
+      if (!userId) return alert("Please enter your User ID first!");
+
+      if (!permissionGranted) {
+        alert("Please test camera permission first!");
         return;
       }
+
+      if (socket) {
+        socket.disconnect();
+      }
+
+      socket = io("https://webrtc-1-pi3s.onrender.com/");
+
+      socket.on("connect", () => {
+        log(`✅ Connected to server with socket ID: ${socket.id}`);
+        updateStatus("✅ Connected to server", "connected");
+        socket.emit("register", userId);
+        log(`📝 Registered as user: ${userId}`);
+      });
+
+      socket.on("call:incoming", async ({ callerId, callType, callId, socketId }) => {
+        currentCallId = callId;
+        targetUserId = callerId;
+        isCallInitiator = false;
+        
+        log(`📞 Incoming ${callType} call from ${callerId}`);
+        updateStatus(`📞 Incoming call from ${callerId}`, "warning");
+        
+        const callInfo = document.getElementById("callIdHolder");
+        callInfo.innerHTML = `📞 <strong>Incoming call from: ${callerId}</strong><br>🎥 Your camera will auto-start when you accept`;
+        callInfo.style.display = "block";
+      });
+
+      socket.on("offer", async ({ offer, from }) => {
+        log(`📡 Received offer from: ${from}`);
+        await handleOffer(offer, from);
+      });
+
+      socket.on("answer", async ({ answer, from }) => {
+        log(`📡 Received answer from: ${from}`);
+        await handleAnswer(answer);
+      });
+
+      socket.on("ice-candidate", async ({ candidate, from }) => {
+        log(`🧊 Received ICE candidate from: ${from}`);
+        await handleIceCandidate(candidate);
+      });
+
+      socket.on("call:accepted", ({ callId }) => {
+        log("✅ Call accepted by remote user");
+        updateStatus("✅ Call Active - Both cameras connected", "connected");
+        startAutoEndTimer();
+      });
+
+      socket.on("call:rejected", ({ callId }) => {
+        log("❌ Call rejected by remote user");
+        updateStatus("❌ Call Rejected", "error");
+        resetCall();
+      });
+
+      socket.on("call:cancelled", ({ callId }) => {
+        log("🛑 Call cancelled");
+        updateStatus("🛑 Call Cancelled", "warning");
+        resetCall();
+      });
+
+      socket.on("call:ended", ({ callId, duration, status }) => {
+        log(`📴 Call ended - Duration: ${duration}s`);
+        updateStatus("📴 Call Ended", "");
+        resetCall();
+      });
+
+      socket.on("disconnect", () => {
+        log("❌ Disconnected from server");
+        updateStatus("❌ Disconnected", "error");
+      });
+    }
+
+    async function initiateCall() {
+      const callerId = document.getElementById("userId").value.trim();
+      const receiverId = document.getElementById("receiverId").value.trim();
+      
+      if (!callerId || !receiverId) {
+        return alert("Please enter both User IDs!");
+      }
+      
+      if (!socket || !socket.connected) {
+        return alert("Please connect to server first!");
+      }
+
+      if (!permissionGranted || !localStream) {
+        alert("Please test camera permission first!");
+        return;
+      }
+
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        document.getElementById("localVideo").srcObject = localStream;
-        updateLocalStatus("Camera on");
-        log("🎥 Local camera started");
+        log(`📞 Starting video call to ${receiverId}...`);
+        updateStatus("📞 Initiating call...", "connecting");
+        
+        isCallInitiator = true;
+        targetUserId = receiverId;
+
+        // Create peer connection with existing stream
+        await createPeerConnection();
+        log("🔗 Peer connection created with local stream");
+
+        // Create offer
+        const offer = await peerConnection.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
+        
+        await peerConnection.setLocalDescription(offer);
+        log("📡 Local description set with offer");
+
+        // Send call initiation and offer
+        socket.emit("call:initiated", { callerId, receiverId, callType: "video" });
+        socket.emit("offer", { offer, to: receiverId });
+        
+        log("📤 Offer sent to remote user");
+        updateStatus("📤 Calling... (Camera ready)", "connecting");
+
       } catch (error) {
-        updateLocalStatus("Camera error");
-        log(`❌ Could not start camera: ${error.message}`);
-        throw error;
+        log(`❌ Error initiating call: ${error.message}`);
+        updateStatus("❌ Call failed", "error");
+        resetCall();
       }
     }
 
-    function stopCamera() {
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-        document.getElementById("localVideo").srcObject = null;
-        updateLocalStatus("Camera off");
-        log("🎥 Local camera stopped");
+    async function handleOffer(offer, from) {
+      try {
+        targetUserId = from;
+        
+        // Ensure camera is ready
+        if (!localStream) {
+          await startCamera();
+          log("📹 Camera started for incoming call");
+        }
+
+        // Create peer connection
+        await createPeerConnection();
+        log("🔗 Peer connection created for incoming call");
+
+        // Set remote description
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        log("📡 Remote description set from offer");
+
+        // Create answer
+        const answer = await peerConnection.createAnswer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
+        
+        await peerConnection.setLocalDescription(answer);
+        log("📡 Local description set with answer");
+
+        // Send answer
+        socket.emit("answer", { answer, to: from });
+        log("📤 Answer sent to caller");
+
+      } catch (error) {
+        log(`❌ Error handling offer: ${error.message}`);
+        updateStatus("❌ Call setup failed", "error");
       }
     }
 
-    function createPeerConnection() {
+    async function handleAnswer(answer) {
+      try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        log("📡 Remote description set from answer - Connection establishing...");
+        updateStatus("📡 Connecting streams...", "connecting");
+      } catch (error) {
+        log(`❌ Error handling answer: ${error.message}`);
+      }
+    }
+
+    async function handleIceCandidate(candidate) {
+      try {
+        if (peerConnection && peerConnection.remoteDescription) {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+          log("🧊 ICE candidate added - Connection improving");
+        } else {
+          log("⚠️ ICE candidate queued (waiting for remote description)");
+        }
+      } catch (error) {
+        log(`❌ ICE candidate error: ${error.message}`);
+      }
+    }
+
+    async function createPeerConnection() {
       if (peerConnection) {
         peerConnection.close();
         log("🔗 Closed existing peer connection");
       }
 
       peerConnection = new RTCPeerConnection(config);
-      log("🔗 Created new peer connection");
+      log("🔗 New peer connection created");
 
-      // Add local tracks to peer connection
+      // Ensure we have local stream
+      if (!localStream) {
+        await startCamera();
+      }
+
+      // Add local stream tracks
       if (localStream) {
         localStream.getTracks().forEach(track => {
           peerConnection.addTrack(track, localStream);
+          log(`📹 Added ${track.kind} track to peer connection`);
         });
-        log("🎞️ Added local tracks to peer connection");
       }
 
-      peerConnection.onicecandidate = event => {
-        if (event.candidate) {
-          log("🧊 Sending ICE candidate");
-          socket.emit("ice-candidate", { candidate: event.candidate, to: targetUserId });
-        }
-      };
-
-      peerConnection.ontrack = event => {
-        log("🎞️ Received remote track");
+      // Handle incoming remote stream
+      peerConnection.ontrack = (event) => {
+        log(`🎥 Received remote ${event.track.kind} track`);
+        
         const remoteVideo = document.getElementById("remoteVideo");
-        if (!remoteVideo.srcObject) {
-          remoteVideo.srcObject = new MediaStream();
+        
+        if (event.streams && event.streams[0]) {
+          log("🎥 Setting remote stream to video element");
+          remoteVideo.srcObject = event.streams[0];
+          updateRemoteStatus("Remote video connecting...");
+          
+          // Force play with better error handling
+          remoteVideo.play()
+            .then(() => {
+              log("🎥 Remote video playing successfully");
+              updateRemoteStatus("Remote video active");
+            })
+            .catch(e => {
+              log(`Remote video play error: ${e.message}`);
+              updateRemoteStatus("Remote video error");
+              // Try again after a short delay
+              setTimeout(() => {
+                remoteVideo.play().catch(() => {});
+              }, 1000);
+            });
         }
-        remoteVideo.srcObject.addTrack(event.track);
-        updateRemoteStatus("Connected");
       };
 
+      // ICE candidate handling
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate && targetUserId) {
+          socket.emit("ice-candidate", { candidate: event.candidate, to: targetUserId });
+          log(`🧊 Sent ICE candidate: ${event.candidate.type}`);
+        }
+      };
+
+      // Connection state monitoring
       peerConnection.onconnectionstatechange = () => {
-        log(`🔗 Connection state changed to: ${peerConnection.connectionState}`);
-        if (peerConnection.connectionState === "connected") {
-          updateStatus("Call connected", "connected");
-        } else if (peerConnection.connectionState === "disconnected" || peerConnection.connectionState === "failed") {
-          updateStatus("Call disconnected", "error");
-          endCall();
+        const state = peerConnection.connectionState;
+        log(`🔗 Connection state: ${state}`);
+        
+        switch (state) {
+          case 'connecting':
+            updateStatus("🔗 Connecting both cameras...", "connecting");
+            break;
+          case 'connected':
+            updateStatus("✅ Both cameras connected!", "connected");
+            updateRemoteStatus("Connected & active");
+            break;
+          case 'disconnected':
+            updateStatus("⚠️ Connection lost", "warning");
+            updateRemoteStatus("Disconnected");
+            break;
+          case 'failed':
+            updateStatus("❌ Connection failed", "error");
+            updateRemoteStatus("Connection failed");
+            setTimeout(resetCall, 3000);
+            break;
+        }
+      };
+
+      peerConnection.oniceconnectionstatechange = () => {
+        const iceState = peerConnection.iceConnectionState;
+        log(`🧊 ICE connection state: ${iceState}`);
+        
+        if (iceState === 'connected' || iceState === 'completed') {
+          log("🎉 ICE connection established - Video should be flowing!");
         }
       };
     }
 
-    // Connect user to signaling server
-    function connectUser() {
-      const userId = document.getElementById("userId").value.trim();
-      if (!userId) {
-        alert("Please enter your User ID before connecting.");
+    async function startCamera() {
+      if (localStream) {
+        log("🎥 Camera already active");
         return;
       }
-      if (socket && socket.connected) {
-        alert("Already connected.");
-        return;
-      }
-
-      socket = io();
-
-      socket.on("connect", () => {
-        log(`🌐 Connected to signaling server with socket ID: ${socket.id}`);
-        updateStatus("Connected to signaling server", "connected");
-        socket.emit("register", { userId });
-      });
-
-      socket.on("registered", () => {
-        log(`✅ Registered on server as ${userId}`);
-      });
-
-      socket.on("call-made", async ({ from, offer }) => {
-        log(`📞 Incoming call from ${from}`);
-        if (peerConnection) {
-          log("❗ Already in a call, rejecting new call");
-          socket.emit("call-rejected", { to: from, reason: "busy" });
-          return;
-        }
-        targetUserId = from;
-        currentCallId = generateCallId();
-        isCallInitiator = false;
-
-        await startCamera();
-        createPeerConnection();
-
-        try {
-          await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-          const answer = await peerConnection.createAnswer();
-          await peerConnection.setLocalDescription(answer);
-
-          socket.emit("make-answer", { to: from, answer });
-          log("✅ Sent answer to caller");
-          updateStatus("Call ringing...");
-
-          // Show call ID info
-          showCallId(currentCallId);
-
-          // Start call timer
-          startCallTimer();
-        } catch (error) {
-          log(`❌ Error handling call: ${error.message}`);
-        }
-      });
-
-      socket.on("answer-made", async ({ from, answer }) => {
-        log(`✅ Received answer from ${from}`);
-        try {
-          await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-          updateStatus("Call connected", "connected");
-          showCallId(currentCallId);
-          startCallTimer();
-        } catch (error) {
-          log(`❌ Error setting remote description: ${error.message}`);
-        }
-      });
-
-      socket.on("ice-candidate", async ({ candidate }) => {
-        if (candidate && peerConnection) {
-          try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            log("🧊 Added ICE candidate");
-          } catch (error) {
-            log(`❌ Error adding ICE candidate: ${error.message}`);
-          }
-        }
-      });
-
-      socket.on("call-rejected", ({ reason }) => {
-        log(`❌ Call rejected: ${reason || "No reason provided"}`);
-        alert("Call rejected by the other user.");
-        updateStatus("Call rejected", "error");
-        cleanupCall();
-      });
-
-      socket.on("call-canceled", () => {
-        log("🛑 Call canceled by the other user");
-        alert("Call was canceled.");
-        updateStatus("Call canceled", "warning");
-        cleanupCall();
-      });
-
-      socket.on("disconnect", () => {
-        log("⚠️ Disconnected from signaling server");
-        updateStatus("Disconnected", "error");
-        cleanupCall();
-      });
-
-      socket.on("error", (err) => {
-        log(`❌ Socket error: ${err}`);
-      });
-
-      log("Connecting...");
-      updateStatus("Connecting...", "connecting");
-    }
-
-    async function initiateCall() {
-      const userId = document.getElementById("userId").value.trim();
-      const receiverId = document.getElementById("receiverId").value.trim();
-
-      if (!socket || !socket.connected) {
-        alert("Please connect first.");
-        return;
-      }
-      if (!receiverId) {
-        alert("Please enter the User ID you want to call.");
-        return;
-      }
-      if (peerConnection) {
-        alert("Already in a call. Please end the current call first.");
-        return;
-      }
-
-      targetUserId = receiverId;
-      currentCallId = generateCallId();
-      isCallInitiator = true;
 
       try {
-        await startCamera();
-        createPeerConnection();
+        log("🎥 Starting camera for call...");
+        updateLocalStatus("Starting camera...");
 
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            facingMode: 'user'
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
 
-        socket.emit("call-user", { to: receiverId, offer });
-        log(`📞 Calling user ${receiverId}...`);
-        updateStatus("Calling...", "connecting");
-        showCallId(currentCallId);
+        const localVideo = document.getElementById("localVideo");
+        localVideo.srcObject = localStream;
+        updateLocalStatus(`Camera active (${localStream.getTracks().length} tracks)`);
+        
+        // Force play local video
+        localVideo.play().catch(e => log(`Local video play error: ${e.message}`));
 
-        startCallTimer();
+        log(`🎥 Camera started successfully - ${localStream.getTracks().length} tracks`);
 
       } catch (error) {
-        log(`❌ Error initiating call: ${error.message}`);
+        log(`❌ Camera error: ${error.message}`);
+        updateLocalStatus("Camera failed");
+        alert(`Camera access failed: ${error.message}`);
+        throw error;
       }
     }
 
-    function acceptCall() {
-      if (!peerConnection) {
-        alert("No incoming call to accept.");
-        return;
+    async function acceptCall() {
+      if (!currentCallId) {
+        return alert("No incoming call to accept!");
       }
-      log("✅ Call accepted");
-      updateStatus("Call accepted", "connected");
+
+      try {
+        log("✅ Accepting call...");
+        
+        // Make sure camera is ready
+        if (!localStream) {
+          updateStatus("📹 Starting camera for call...", "connecting");
+          await startCamera();
+        }
+        
+        socket.emit("call:accepted", { callId: currentCallId });
+        updateStatus("✅ Call accepted - Connecting...", "connected");
+        startAutoEndTimer();
+        
+        document.getElementById("callIdHolder").style.display = "none";
+      } catch (error) {
+        log(`❌ Error accepting call: ${error.message}`);
+        updateStatus("❌ Failed to accept call", "error");
+      }
     }
 
     function rejectCall() {
-      if (!targetUserId) {
-        alert("No incoming call to reject.");
-        return;
-      }
-      socket.emit("call-rejected", { to: targetUserId, reason: "rejected" });
+      if (!currentCallId) return alert("No call to reject!");
+      socket.emit("call:rejected", { callId: currentCallId });
       log("❌ Call rejected");
-      updateStatus("Call rejected", "error");
-      cleanupCall();
+      resetCall();
     }
 
     function cancelCall() {
-      if (!targetUserId) {
-        alert("No outgoing call to cancel.");
-        return;
-      }
-      socket.emit("call-canceled", { to: targetUserId });
-      log("🛑 Call canceled");
-      updateStatus("Call canceled", "warning");
-      cleanupCall();
+      if (!currentCallId) return alert("No call to cancel!");
+      socket.emit("call:cancelled", { callId: currentCallId });
+      log("🛑 Call cancelled");
+      resetCall();
     }
 
     function endCall() {
-      log("📴 Ending call");
-      updateStatus("Call ended");
-      cleanupCall();
+      if (!currentCallId) return alert("No active call to end!");
+      socket.emit("call:ended", { callId: currentCallId });
+      log("📴 Call ended by user");
+      resetCall();
     }
 
-    function cleanupCall() {
-      if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-      }
-      stopCamera();
-      document.getElementById("remoteVideo").srcObject = null;
-      updateRemoteStatus("Waiting for connection");
+    function resetCall() {
       currentCallId = null;
       targetUserId = null;
       isCallInitiator = false;
-      hideCallId();
-      stopCallTimer();
-    }
+      
+      document.getElementById("callIdHolder").style.display = "none";
 
-    // Generate a unique call ID (simple random string)
-    function generateCallId() {
-      return Math.random().toString(36).substring(2, 10).toUpperCase();
-    }
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+        log("🔗 Peer connection closed");
+      }
 
-    function showCallId(id) {
-      const holder = document.getElementById("callIdHolder");
-      holder.style.display = "block";
-      holder.textContent = `Call ID: ${id}`;
-    }
-
-    function hideCallId() {
-      const holder = document.getElementById("callIdHolder");
-      holder.style.display = "none";
-      holder.textContent = "";
-    }
-
-    // Timer for call duration limit
-    function startCallTimer() {
-      stopCallTimer();
-      const durationInput = document.getElementById("callDuration").value;
-      const durationMinutes = parseInt(durationInput, 10) || 2;
-      const durationMs = durationMinutes * 60 * 1000;
-
-      callTimer = setTimeout(() => {
-        alert("Call duration reached. Ending call.");
-        endCall();
-      }, durationMs);
-
-      log(`⏲️ Call timer started for ${durationMinutes} minute(s)`);
-    }
-
-    function stopCallTimer() {
       if (callTimer) {
         clearTimeout(callTimer);
         callTimer = null;
-        log("⏲️ Call timer stopped");
       }
+
+      // Keep local stream running for next call
+      // Clear remote video only
+      document.getElementById("remoteVideo").srcObject = null;
+      
+      updateRemoteStatus("Waiting for connection");
+      updateStatus("Ready for new call", "");
+      
+      log("🔄 Call reset completed (camera kept active)");
     }
 
+    function startAutoEndTimer() {
+      const minutes = parseInt(document.getElementById("callDuration").value) || 2;
+      const ms = minutes * 60 * 1000;
+
+      callTimer = setTimeout(() => {
+        log(`⏰ Auto-ending call after ${minutes} minutes`);
+        endCall();
+      }, ms);
+
+      log(`⏰ Auto-end timer set for ${minutes} minutes`);
+    }
+
+    // Initialize
+    log("🚀 WebRTC Video Call Interface Ready");
+    updateStatus("Ready - Test camera first, then connect", "");
+    updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
   </script>
 </body>
 </html>
