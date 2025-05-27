@@ -60,73 +60,74 @@ const user = require('./model/user');
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // User registration
+  // User registration to their personal room (userId)
   socket.on("register", (userId) => {
     socket.join(userId.toString());
     console.log(`User ${userId} registered and joined room ${userId}`);
   });
 
   // Call initiation
-socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
-  try {
-    const receiverSockets = await io.in(receiverId.toString()).fetchSockets();
+  socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
+    try {
+      const receiverSockets = await io.in(receiverId.toString()).fetchSockets();
 
-    if (receiverSockets.length === 0) {
-      // Receiver is not online
+      if (receiverSockets.length === 0) {
+        // Receiver offline — log missed call & notify caller
+        const call = await CallLog.create({
+          callerId,
+          receiverId,
+          callType,
+          status: 'missed',
+          startedAt: new Date(),
+          endedAt: new Date()
+        });
+
+        io.to(callerId.toString()).emit('call:busy', { message: 'User is offline', callId: call.id });
+        return;
+      }
+
+      // Check if receiver is busy on any socket
+      const receiverBusy = receiverSockets.some(s => s.isBusy);
+      if (receiverBusy) {
+        const call = await CallLog.create({
+          callerId,
+          receiverId,
+          callType,
+          status: 'missed',
+          startedAt: new Date(),
+          endedAt: new Date()
+        });
+
+        io.to(callerId.toString()).emit('call:busy', { message: 'User is busy', callId: call.id });
+        return;
+      }
+
+      // Create call record with "attempted" status
       const call = await CallLog.create({
         callerId,
         receiverId,
         callType,
-        status: 'missed',
+        status: 'attempted',
         startedAt: new Date(),
-        endedAt: new Date()
       });
 
-      io.to(callerId.toString()).emit('call:busy', { message: 'User is offline', callId: call.id });
-      return;
-    }
+      socket.callId = call.id;
 
-    const receiverBusy = receiverSockets.some(s => s.isBusy);
+      // Notify receiver with caller's socketId (important for signaling)
+      const receiverSocket = receiverSockets[0]; // pick first socket for simplicity
+      const receiverSocketId = receiverSocket.id;
 
-    if (receiverBusy) {
-      const call = await CallLog.create({
+      io.to(receiverSocketId).emit("call:incoming", {
         callerId,
-        receiverId,
         callType,
-        status: 'missed',
-        startedAt: new Date(),
-        endedAt: new Date()
+        callId: call.id,
+        socketId: socket.id  // send caller's socket.id for signaling
       });
 
-      io.to(callerId.toString()).emit('call:busy', { message: 'User is busy', callId: call.id });
-      return;
+    } catch (err) {
+      console.error('Call initiation error:', err);
     }
-
-    const call = await CallLog.create({
-      callerId,
-      receiverId,
-      callType,
-      status: 'attempted',
-      startedAt: new Date(),
-    });
-
-    socket.callId = call.id;
-
-    const receiverSocket = receiverSockets[0]; // pick the first available socket
-    const receiverSocketId = receiverSocket.id;
-
-    io.to(receiverSocketId).emit("call:incoming", {
-      callerId,
-      callType: "video",
-      callId: call.id,
-      socketId: socket.id  // Send the caller's socket id so receiver can reply
-    });
-
-  } catch (err) {
-    console.error('Call initiation error:', err);
-  }
-});
-
+  });
 
   // Call acceptance
   socket.on('call:accepted', async ({ callId }) => {
@@ -137,28 +138,35 @@ socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
       );
 
       const call = await CallLog.findByPk(callId);
+      if (!call) return;
+
+      // Mark caller and receiver sockets as busy
       const callerSockets = await io.in(call.callerId.toString()).fetchSockets();
       const receiverSockets = await io.in(call.receiverId.toString()).fetchSockets();
       callerSockets.forEach(s => s.isBusy = true);
       receiverSockets.forEach(s => s.isBusy = true);
 
-      io.to(call.callerId.toString()).emit('call:accepted');
+      // Notify caller that call was accepted
+      io.to(call.callerId.toString()).emit('call:accepted', { callId });
     } catch (err) {
       console.error('Call acceptance error:', err);
     }
   });
 
-  // WebRTC signaling messages
-  socket.on("webrtc:offer", ({ to, offer }) => {
-    io.to(to.toString()).emit("webrtc:offer", { from: socket.id, offer });
+  // WebRTC signaling handlers - FIXED TO MATCH CLIENT EVENTS
+  socket.on("offer", ({ offer, to }) => {
+    console.log(`Relaying offer from ${socket.id} to user ${to}`);
+    io.to(to.toString()).emit("offer", { from: socket.id, offer });
   });
 
-  socket.on("webrtc:answer", ({ to, answer }) => {
-    io.to(to.toString()).emit("webrtc:answer", { from: socket.id, answer });
+  socket.on("answer", ({ answer, to }) => {
+    console.log(`Relaying answer from ${socket.id} to user ${to}`);
+    io.to(to.toString()).emit("answer", { from: socket.id, answer });
   });
 
-  socket.on("webrtc:ice-candidate", ({ to, candidate }) => {
-    io.to(to.toString()).emit("webrtc:ice-candidate", { from: socket.id, candidate });
+  socket.on("ice-candidate", ({ candidate, to }) => {
+    console.log(`Relaying ICE candidate from ${socket.id} to user ${to}`);
+    io.to(to.toString()).emit("ice-candidate", { from: socket.id, candidate });
   });
 
   // Call rejection
@@ -167,8 +175,8 @@ socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
       const call = await CallLog.findByPk(callId);
       if (call) {
         await call.update({ status: "missed", endedAt: new Date() });
-        io.to(call.callerId.toString()).emit("call:busy", { message: "User is busy" });
-        io.to(call.receiverId.toString()).emit("call:missed", { callerId: call.callerId });
+        io.to(call.callerId.toString()).emit("call:rejected", { callId });
+        io.to(call.receiverId.toString()).emit("call:rejected", { callId });
       }
     } catch (err) {
       console.error("Call rejection error:", err);
@@ -181,7 +189,7 @@ socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
       const call = await CallLog.findByPk(callId);
       if (call) {
         await call.update({ status: "cancelled", endedAt: new Date() });
-        io.to(call.receiverId.toString()).emit("call:cancelled");
+        io.to(call.receiverId.toString()).emit("call:cancelled", { callId });
       }
     } catch (err) {
       console.error("Call cancel error:", err);
@@ -202,38 +210,60 @@ socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
     }
   });
 
-  // Call ending
+  // Call ended
   socket.on('call:ended', async ({ callId }) => {
     try {
       const call = await CallLog.findByPk(callId);
       if (call) {
+        const duration = Math.floor((new Date() - call.startedAt) / 1000);
+        
         await call.update({
           status: 'completed',
           endedAt: new Date(),
         });
 
+        // Reset busy flags
         const callerSockets = await io.in(call.callerId.toString()).fetchSockets();
         const receiverSockets = await io.in(call.receiverId.toString()).fetchSockets();
         callerSockets.forEach(s => s.isBusy = false);
         receiverSockets.forEach(s => s.isBusy = false);
 
-        io.to(call.callerId.toString()).emit('call:ended', { callId });
-        io.to(call.receiverId.toString()).emit('call:ended', { callId });
+        io.to(call.callerId.toString()).emit('call:ended', { callId, duration, status: 'completed' });
+        io.to(call.receiverId.toString()).emit('call:ended', { callId, duration, status: 'completed' });
       }
     } catch (err) {
       console.error('Call ended error:', err);
     }
   });
 
-  // User disconnection
+  // User disconnect cleanup
   socket.on("disconnect", async () => {
     console.log("User disconnected:", socket.id);
+    
+    // Reset busy flag
+    socket.isBusy = false;
+    
     if (socket.callId) {
       try {
         const call = await CallLog.findByPk(socket.callId);
-        if (call && call.status === "attempted") {
+        if (call && ['attempted', 'connected'].includes(call.status)) {
           await call.update({ status: "missed", endedAt: new Date() });
-          io.to(call.receiverId.toString()).emit("call:missed", { callerId: call.callerId });
+          
+          // Notify the other party about disconnection
+          if (call.callerId.toString() !== socket.id) {
+            io.to(call.callerId.toString()).emit("call:ended", { 
+              callId: call.id, 
+              duration: Math.floor((new Date() - call.startedAt) / 1000),
+              status: 'disconnected' 
+            });
+          }
+          if (call.receiverId.toString() !== socket.id) {
+            io.to(call.receiverId.toString()).emit("call:ended", { 
+              callId: call.id, 
+              duration: Math.floor((new Date() - call.startedAt) / 1000),
+              status: 'disconnected' 
+            });
+          }
         }
       } catch (err) {
         console.error("Disconnect cleanup error:", err);
