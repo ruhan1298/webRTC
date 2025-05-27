@@ -67,42 +67,66 @@ io.on("connection", (socket) => {
   });
 
   // Call initiation
-  socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
-    try {
-      const receiverSockets = await io.in(receiverId.toString()).fetchSockets();
-      const receiverBusy = receiverSockets.some(s => s.isBusy);
+socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
+  try {
+    const receiverSockets = await io.in(receiverId.toString()).fetchSockets();
 
-      if (receiverBusy) {
-        const call = await CallLog.create({
-          callerId,
-          receiverId,
-          callType,
-          status: 'missed',
-          startedAt: new Date(),
-          endedAt: new Date()
-        });
-        io.to(callerId.toString()).emit('call:busy', { message: 'User is busy', callId: call.id });
-        return;
-      }
-      
+    if (receiverSockets.length === 0) {
+      // Receiver is not online
       const call = await CallLog.create({
         callerId,
         receiverId,
         callType,
-        status: 'attempted',
+        status: 'missed',
         startedAt: new Date(),
+        endedAt: new Date()
       });
 
-      socket.callId = call.id;
-      io.to(receiverId.toString()).emit('call:incoming', {
-        callerId,
-        callType,
-        callId: call.id
-      });
-    } catch (err) {
-      console.error('Call initiation error:', err);
+      io.to(callerId.toString()).emit('call:busy', { message: 'User is offline', callId: call.id });
+      return;
     }
-  });
+
+    const receiverBusy = receiverSockets.some(s => s.isBusy);
+
+    if (receiverBusy) {
+      const call = await CallLog.create({
+        callerId,
+        receiverId,
+        callType,
+        status: 'missed',
+        startedAt: new Date(),
+        endedAt: new Date()
+      });
+
+      io.to(callerId.toString()).emit('call:busy', { message: 'User is busy', callId: call.id });
+      return;
+    }
+
+    const call = await CallLog.create({
+      callerId,
+      receiverId,
+      callType,
+      status: 'attempted',
+      startedAt: new Date(),
+    });
+
+    socket.callId = call.id;
+
+    const receiverSocket = receiverSockets[0]; // pick the first available socket
+    const receiverSocketId = receiverSocket.id;
+
+    io.to(receiverSocketId).emit("call:incoming", {
+      callerId,
+      callType: "video",
+      callId: call.id,
+      socketId: socket.id  // Send the caller's socket id so receiver can reply
+    });
+
+  } catch (err) {
+    console.error('Call initiation error:', err);
+  }
+});
+
 
   // Call acceptance
   socket.on('call:accepted', async ({ callId }) => {

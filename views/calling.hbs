@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <title>Socket.IO Call Test</title>
-  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 </head>
 <body>
   <h2>📞 Call Test Interface</h2>
@@ -24,7 +24,6 @@
   <button onclick="acceptCall()">✅ Accept Call</button>
   <button onclick="rejectCall()">❌ Reject Call</button>
   <button onclick="cancelCall()">🛑 Cancel Call</button>
-  <button onclick="timeoutCall()">⌛ Timeout Call</button>
   <button onclick="endCall()">📴 End Call</button>
   <br /><br />
 
@@ -35,14 +34,21 @@
 
   <h3>🎥 Local Video Preview:</h3>
   <video id="localVideo" autoplay playsinline muted style="width: 300px; border: 1px solid #999; border-radius: 8px;"></video>
-  <br />
-  <button onclick="startCamera()">🎬 Start Camera Manually</button>
+
+  <h3>🎥 Remote Video Preview:</h3>
+  <video id="remoteVideo" autoplay playsinline style="width: 300px; border: 1px solid #999; border-radius: 8px;"></video>
 
   <script>
     let socket;
-    let currentCallId = null;
+    let peerConnection;
     let localStream;
+    let currentCallId = null;
+    let callerSocketId = null;
     let callTimer;
+
+    const config = {
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    };
 
     function log(msg) {
       const logs = document.getElementById("logs");
@@ -52,16 +58,13 @@
 
     function updateStatus(text, color = "black") {
       const statusEl = document.getElementById("status");
-      statusEl.textContent = text;
+      statusEl.textContent = "Status: " + text;
       statusEl.style.color = color;
     }
 
-    function connectUser() {
+    async function connectUser() {
       const userId = document.getElementById("userId").value.trim();
       if (!userId) return alert("Please enter a User ID.");
-
-      log("🔌 Attempting to connect...");
-      updateStatus("🔌 Attempting to connect...", "orange");
 
       socket = io("https://webrtc-1-pi3s.onrender.com/");
 
@@ -71,137 +74,125 @@
         socket.emit("register", userId);
       });
 
-      socket.on("disconnect", () => {
-        log("❌ Disconnected");
-        updateStatus("❌ Disconnected", "red");
-      });
-
-      socket.on("call:incoming", ({ callerId, callType, callId }) => {
+      socket.on("call:incoming", async ({ callerId, callType, callId, socketId }) => {
         currentCallId = callId;
-        document.getElementById("callIdHolder").textContent =
-          `📞 Incoming ${callType} call from ${callerId}, Call ID: ${callId}`;
-        log(`📞 Incoming call: ${JSON.stringify({ callerId, callType, callId })}`);
+        callerSocketId = socketId; // Save caller's socket id
+        log(`📞 Incoming call from ${callerId}`);
+        document.getElementById("callIdHolder").textContent = `Incoming call from ${callerId}`;
       });
 
-      socket.on("call:accepted", () => {
-        log("✅ Call accepted by other user.");
-        startAutoEndTimer();
+      socket.on("offer", async ({ offer, from }) => {
+        await startCamera();
+        createPeerConnection(from);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        socket.emit("answer", { answer, to: from });
+        log("📡 Answer sent");
       });
 
-      socket.on("call:rejected", () => {
-        log("❌ Your call was rejected.");
-        resetCall();
+      socket.on("answer", async ({ answer }) => {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        log("📡 Answer received");
       });
 
-      socket.on("call:missed", (data) => {
-        log("📭 Missed call: " + JSON.stringify(data));
-        alert("Call missed! The user is currently busy or did not answer.");
-        resetCall();
-      });
-
-      socket.on("call:cancelled", () => {
-        log("🛑 Call cancelled.");
-        resetCall();
-      });
-
-      socket.on("call:busy", (data) => {
-        log("📞 User is busy: " + JSON.stringify(data));
-        alert("The user you are trying to call is currently busy.");
-        resetCall();
-      });
-
-      socket.on("call:noAnswer", (data) => {
-        log("⌛ No answer: " + JSON.stringify(data));
-        alert("No answer from the other user.");
-        resetCall();
+      socket.on("ice-candidate", async ({ candidate }) => {
+        if (peerConnection) {
+          try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            console.error("ICE error", e);
+          }
+        }
       });
 
       socket.on("call:ended", ({ callId, duration, status }) => {
-        log(`📴 Call ${callId} ended. Duration: ${duration} seconds. Status: ${status}`);
-        document.getElementById("callIdHolder").textContent =
-          `Call ended. Duration: ${duration} sec, Status: ${status}`;
+        log(`📴 Call ended. Duration: ${duration}s, Status: ${status}`);
+        document.getElementById("callIdHolder").textContent = "";
         resetCall();
       });
-
-      socket.onAny((event, data) => {
-        log(`📨 Event: ${event} - ${JSON.stringify(data)}`);
-      });
     }
 
-    function initiateCall() {
+    async function initiateCall() {
       const callerId = document.getElementById("userId").value.trim();
       const receiverId = document.getElementById("receiverId").value.trim();
-      const callType = "video";
-
       if (!callerId || !receiverId) return alert("Enter both caller and receiver IDs");
 
-      startCamera().then(() => {
-        socket.emit("call:initiated", { callerId, receiverId, callType });
-        log("📤 Call initiated...");
-      }).catch((err) => {
-        log("❌ Failed to start camera before initiating call.");
+      await startCamera();
+      createPeerConnection(receiverId);
+
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      socket.emit("offer", { offer, to: receiverId });
+      socket.emit("call:initiated", { callerId, receiverId, callType: "video" });
+      log("📤 Offer sent & call initiated");
+    }
+
+    function createPeerConnection(targetId) {
+      peerConnection = new RTCPeerConnection(config);
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit("ice-candidate", { candidate: event.candidate, to: targetId });
+        }
+      };
+
+      peerConnection.ontrack = (event) => {
+        document.getElementById("remoteVideo").srcObject = event.streams[0];
+      };
+
+      localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
       });
     }
 
-    function acceptCall() {
-      if (!currentCallId) return alert("No incoming call to accept.");
+    async function acceptCall() {
+      if (!currentCallId || !callerSocketId) return alert("No incoming call.");
 
-      startCamera().then(() => {
-        socket.emit("call:accepted", { callId: currentCallId });
-        log("✅ Accepted the call.");
-        startAutoEndTimer();
-      }).catch((err) => {
-        log("❌ Failed to start camera while accepting call.");
-      });
+      await startCamera();
+      createPeerConnection(callerSocketId); // Now create peer connection
+      socket.emit("call:accepted", { callId: currentCallId });
+      log("✅ Call accepted");
+      startAutoEndTimer();
     }
 
     function rejectCall() {
-      if (!currentCallId) return alert("No incoming call to reject.");
+      if (!currentCallId) return alert("No call to reject.");
       socket.emit("call:rejected", { callId: currentCallId });
-      log("❌ Rejected the call.");
+      log("❌ Call rejected");
       resetCall();
     }
 
     function cancelCall() {
-      if (!currentCallId) return alert("No outgoing call to cancel.");
+      if (!currentCallId) return alert("No call to cancel.");
       socket.emit("call:cancelled", { callId: currentCallId });
-      log("🛑 Cancelled the call.");
-      resetCall();
-    }
-
-    function timeoutCall() {
-      if (!currentCallId) return alert("No active call to timeout.");
-      socket.emit("call:timeout", { callId: currentCallId });
-      log("⌛ Timeout sent for the call.");
+      log("🛑 Call cancelled");
       resetCall();
     }
 
     function endCall() {
-      if (!currentCallId) return alert("No active call to end.");
+      if (!currentCallId) return alert("No call to end.");
       socket.emit("call:ended", { callId: currentCallId });
-      log("🛑 End call signal sent.");
+      log("🛑 Ended the call");
       resetCall();
     }
 
     function resetCall() {
       currentCallId = null;
+      callerSocketId = null;
       document.getElementById("callIdHolder").textContent = "";
-
-      if (callTimer) {
-        clearTimeout(callTimer);
-        callTimer = null;
-      }
+      if (peerConnection) peerConnection.close();
+      peerConnection = null;
+      if (callTimer) clearTimeout(callTimer);
     }
 
     async function startCamera() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        document.getElementById("localVideo").srcObject = stream;
-        localStream = stream;
-        log("🎥 Camera & Mic access granted.");
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        document.getElementById("localVideo").srcObject = localStream;
+        log("🎥 Camera & mic access granted");
       } catch (err) {
-        console.error("Error accessing media devices:", err);
-        alert("❌ Could not access camera/mic.");
+        log("❌ Failed to access camera/mic");
         throw err;
       }
     }
@@ -209,16 +200,12 @@
     function startAutoEndTimer() {
       const durationInput = document.getElementById("callDuration").value;
       const durationInMinutes = parseInt(durationInput, 10);
-
       if (isNaN(durationInMinutes) || durationInMinutes <= 0) {
         alert("⏱ Invalid duration. Defaulting to 1 minute.");
         return;
       }
-
-      log(`⏱ Call will auto-end in ${durationInMinutes} minute(s).`);
-
       callTimer = setTimeout(() => {
-        log("⌛ Call time reached. Ending call automatically.");
+        log("⌛ Auto-ending call");
         endCall();
       }, durationInMinutes * 60 * 1000);
     }
