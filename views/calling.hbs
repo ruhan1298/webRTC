@@ -5,6 +5,38 @@
   <title>WebRTC Video Call - Camera/Mic Controls</title>
   <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <style>
+    .chat-container {
+  border: 1px solid #ccc;
+  padding: 10px;
+  width: 300px;
+  max-height: 400px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-messages {
+  flex-grow: 1;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.chat-msg {
+  padding: 5px;
+  margin: 4px 0;
+  border-radius: 4px;
+}
+
+.chat-msg.self {
+  background-color: #daf1ff;
+  align-self: flex-end;
+}
+
+.chat-msg.remote {
+  background-color: #eee;
+  align-self: flex-start;
+}
+
     body {
       font-family: Arial, sans-serif;
       max-width: 1400px;
@@ -503,11 +535,7 @@
         socket.disconnect();
       }
 
-      socket = io("https://webrtc-1-pi3s.onrender.com/", {
-        transports: ["websocket"],
-        reconnectionAttempts: 5,
-        reconnectionDelay: 2000
-      }); 
+      socket = io("http://localhost:3002"); 
 
       socket.on("connect", () => {
         log(`✅ Connected to server with socket ID: ${socket.id}`);
@@ -983,34 +1011,32 @@
     log("🚀 WebRTC Video Call Interface Ready - With Camera/Mic Controls");
     updateStatus("Ready - Test camera first, then connect", "");
     updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
-
- function sendMessage() {
-  const messageInput = document.getElementById("chatInput");
-  const message = messageInput.value.trim();
-
-  if (!message || !socket || !targetUserId) return;
-
-  socket.emit("chat:message", {
-    to: targetUserId,
-    message
-  });
-
-  appendChatMessage("You", message);
-  messageInput.value = "";
-}
 socket.on("chat:message", ({ from, message }) => {
-  appendChatMessage(from, message);
+  appendChatMessage(`${from}: ${message}`, "remote");
 });
-function appendChatMessage(sender, message) {
-  const chatBox = document.getElementById("chatMessages");
-  const msgEl = document.createElement("div");
-  msgEl.className = "chat-message";
-  msgEl.innerHTML = `<strong>${sender}:</strong> ${message}`;
-  chatBox.appendChild(msgEl);
-  chatBox.scrollTop = chatBox.scrollHeight;
-}
 
+function sendChatMessage() {
+    const message = document.getElementById("chatInput").value.trim();
+    if (!message || !socket || !targetUserId) return;
 
+    socket.emit("chat:message", {
+      to: targetUserId,
+      message,
+      from: socket.id,
+    });
+
+    appendChatMessage(`You: ${message}`, "self");
+    document.getElementById("chatInput").value = "";
+  }
+
+  function appendChatMessage(msg, type = "remote") {
+    const chatMessages = document.getElementById("chatMessages");
+    const div = document.createElement("div");
+    div.className = type === "self" ? "chat-msg self" : "chat-msg remote";
+    div.textContent = msg;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
 
     // Handle window unload to clean up
     window.addEventListener("beforeunload", () => {
