@@ -535,7 +535,7 @@
         socket.disconnect();
       }
 
-      socket = io("http://localhost:3002"); 
+      socket = io("https://webrtc-1-pi3s.onrender.com")   
 
       socket.on("connect", () => {
         log(`✅ Connected to server with socket ID: ${socket.id}`);
