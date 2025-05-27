@@ -984,32 +984,33 @@
     updateStatus("Ready - Test camera first, then connect", "");
     updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
 
-    function sendChatMessage() {
-  const input = document.getElementById("chatInput");
-  const message = input.value.trim();
-  if (message && socket && targetUserId) {
-    socket.emit("chat:message", {
-      to: targetUserId,
-      message,
-    });
+ function sendMessage() {
+  const messageInput = document.getElementById("chatInput");
+  const message = messageInput.value.trim();
 
-    displayChatMessage("You", message);
-    input.value = "";
-  }
+  if (!message || !socket || !targetUserId) return;
+
+  socket.emit("chat:message", {
+    to: targetUserId,
+    message
+  });
+
+  appendChatMessage("You", message);
+  messageInput.value = "";
 }
-    function displayChatMessage(sender, message) {
-      const chatMessages = document.getElementById("chatMessages");
-      const msgDiv = document.createElement("div");
-      msgDiv.className = "chat-message";
-      msgDiv.innerHTML = `<strong>${sender}:</strong> ${message}`;
-      chatMessages.appendChild(msgDiv);
-      chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
+socket.on("chat:message", ({ from, message }) => {
+  appendChatMessage(from, message);
+});
+function appendChatMessage(sender, message) {
+  const chatBox = document.getElementById("chatMessages");
+  const msgEl = document.createElement("div");
+  msgEl.className = "chat-message";
+  msgEl.innerHTML = `<strong>${sender}:</strong> ${message}`;
+  chatBox.appendChild(msgEl);
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
 
-    // Socket event for incoming chat messages
-    socket.on("chat:message", ({ from, message }) => {
-      displayChatMessage(from, message);
-    });
+
 
     // Handle window unload to clean up
     window.addEventListener("beforeunload", () => {

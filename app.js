@@ -66,6 +66,13 @@ io.on("connection", (socket) => {
     console.log(`User ${userId} registered and joined room ${userId}`);
   });
 
+  socket.on("chat:message", ({ to, message }) => {
+  io.to(userSocketMap[to]).emit("chat:message", {
+    from: userIdMap[socket.id], // or pass sender's ID
+    message
+  });
+});
+
   // Call initiation
   socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
     try {
