@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>WebRTC Video Call - Auto Permission Fix</title>
+  <title>WebRTC Video Call - Fixed Remote Video</title>
   <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <style>
     body {
@@ -120,7 +120,7 @@
 </head>
 <body>
   <div class="container">
-    <h2>📞 WebRTC Video Call - Auto Permission Fix</h2>
+    <h2>📞 WebRTC Video Call - Fixed Remote Video</h2>
 
     <!-- Permission Status -->
     <div id="permissionStatus" class="permission-box">
@@ -182,13 +182,16 @@
     let callTimer;
     let isCallInitiator = false;
     let permissionGranted = false;
+    let iceCandidateQueue = []; // Queue for ICE candidates
 
     const config = {
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun.services.mozilla.com" }
-      ]
+        { urls: "stun:stun.services.mozilla.com" },
+        { urls: "stun:stun2.l.google.com:19302" }
+      ],
+      iceCandidatePoolSize: 10
     };
 
     function log(msg) {
@@ -321,7 +324,7 @@
 
       socket.on("call:accepted", ({ callId }) => {
         log("✅ Call accepted by remote user");
-        updateStatus("✅ Call Active - Both cameras connected", "connected");
+        updateStatus("✅ Call Active - Connecting streams...", "connected");
         startAutoEndTimer();
       });
 
@@ -373,6 +376,9 @@
         isCallInitiator = true;
         targetUserId = receiverId;
 
+        // Initialize call on server first
+        socket.emit("call:initiated", { callerId, receiverId, callType: "video" });
+
         // Create peer connection with existing stream
         await createPeerConnection();
         log("🔗 Peer connection created with local stream");
@@ -386,8 +392,7 @@
         await peerConnection.setLocalDescription(offer);
         log("📡 Local description set with offer");
 
-        // Send call initiation and offer
-        socket.emit("call:initiated", { callerId, receiverId, callType: "video" });
+        // Send offer
         socket.emit("offer", { offer, to: receiverId });
         
         log("📤 Offer sent to remote user");
@@ -402,21 +407,25 @@
 
     async function handleOffer(offer, from) {
       try {
+        log(`📥 Processing offer from ${from}`);
         targetUserId = from;
         
-        // Ensure camera is ready
+        // Ensure camera is ready before creating peer connection
         if (!localStream) {
           await startCamera();
           log("📹 Camera started for incoming call");
         }
 
-        // Create peer connection
+        // Create peer connection with local stream
         await createPeerConnection();
         log("🔗 Peer connection created for incoming call");
 
-        // Set remote description
+        // Set remote description first
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         log("📡 Remote description set from offer");
+
+        // Process any queued ICE candidates now that we have remote description
+        await processIceCandidateQueue();
 
         // Create answer
         const answer = await peerConnection.createAnswer({
@@ -440,8 +449,12 @@
     async function handleAnswer(answer) {
       try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        log("📡 Remote description set from answer - Connection establishing...");
-        updateStatus("📡 Connecting streams...", "connecting");
+        log("📡 Remote description set from answer");
+        
+        // Process any queued ICE candidates
+        await processIceCandidateQueue();
+        
+        updateStatus("📡 Connection established - Waiting for video...", "connecting");
       } catch (error) {
         log(`❌ Error handling answer: ${error.message}`);
       }
@@ -451,12 +464,32 @@
       try {
         if (peerConnection && peerConnection.remoteDescription) {
           await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-          log("🧊 ICE candidate added - Connection improving");
+          log(`🧊 ICE candidate added: ${candidate.type || 'unknown'}`);
         } else {
-          log("⚠️ ICE candidate queued (waiting for remote description)");
+          // Queue the candidate for later processing
+          iceCandidateQueue.push(candidate);
+          log(`🧊 ICE candidate queued (${iceCandidateQueue.length} in queue)`);
         }
       } catch (error) {
         log(`❌ ICE candidate error: ${error.message}`);
+      }
+    }
+
+    async function processIceCandidateQueue() {
+      if (iceCandidateQueue.length > 0 && peerConnection && peerConnection.remoteDescription) {
+        log(`🧊 Processing ${iceCandidateQueue.length} queued ICE candidates`);
+        
+        for (const candidate of iceCandidateQueue) {
+          try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            log(`🧊 Queued ICE candidate processed: ${candidate.type || 'unknown'}`);
+          } catch (error) {
+            log(`❌ Error processing queued ICE candidate: ${error.message}`);
+          }
+        }
+        
+        iceCandidateQueue = []; // Clear the queue
+        log("🧊 ICE candidate queue cleared");
       }
     }
 
@@ -474,10 +507,10 @@
         await startCamera();
       }
 
-      // Add local stream tracks
+      // Add local stream tracks to peer connection
       if (localStream) {
         localStream.getTracks().forEach(track => {
-          peerConnection.addTrack(track, localStream);
+          const sender = peerConnection.addTrack(track, localStream);
           log(`📹 Added ${track.kind} track to peer connection`);
         });
       }
@@ -493,20 +526,37 @@
           remoteVideo.srcObject = event.streams[0];
           updateRemoteStatus("Remote video connecting...");
           
+          // Add event listeners for remote video
+          remoteVideo.onloadedmetadata = () => {
+            log("🎥 Remote video metadata loaded");
+            updateRemoteStatus("Remote video ready");
+          };
+
+          remoteVideo.oncanplay = () => {
+            log("🎥 Remote video can play");
+            updateRemoteStatus("Remote video playing");
+          };
+
           // Force play with better error handling
-          remoteVideo.play()
-            .then(() => {
-              log("🎥 Remote video playing successfully");
-              updateRemoteStatus("Remote video active");
-            })
-            .catch(e => {
-              log(`Remote video play error: ${e.message}`);
-              updateRemoteStatus("Remote video error");
-              // Try again after a short delay
-              setTimeout(() => {
-                remoteVideo.play().catch(() => {});
-              }, 1000);
-            });
+          const playPromise = remoteVideo.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                log("🎥 Remote video playing successfully");
+                updateRemoteStatus("Remote video active");
+                updateStatus("✅ Both cameras connected!", "connected");
+              })
+              .catch(e => {
+                log(`❌ Remote video play error: ${e.message}`);
+                updateRemoteStatus("Remote video error");
+                
+                // Try to play again after user interaction
+                document.onclick = () => {
+                  remoteVideo.play().catch(() => {});
+                  document.onclick = null;
+                };
+              });
+          }
         }
       };
 
@@ -514,7 +564,9 @@
       peerConnection.onicecandidate = (event) => {
         if (event.candidate && targetUserId) {
           socket.emit("ice-candidate", { candidate: event.candidate, to: targetUserId });
-          log(`🧊 Sent ICE candidate: ${event.candidate.type}`);
+          log(`🧊 Sent ICE candidate: ${event.candidate.type || 'unknown'}`);
+        } else if (!event.candidate) {
+          log("🧊 ICE gathering completed");
         }
       };
 
@@ -538,6 +590,7 @@
           case 'failed':
             updateStatus("❌ Connection failed", "error");
             updateRemoteStatus("Connection failed");
+            log("❌ Peer connection failed - attempting to reset");
             setTimeout(resetCall, 3000);
             break;
         }
@@ -547,9 +600,28 @@
         const iceState = peerConnection.iceConnectionState;
         log(`🧊 ICE connection state: ${iceState}`);
         
-        if (iceState === 'connected' || iceState === 'completed') {
-          log("🎉 ICE connection established - Video should be flowing!");
+        switch (iceState) {
+          case 'checking':
+            updateStatus("🧊 Checking connection...", "connecting");
+            break;
+          case 'connected':
+          case 'completed':
+            log("🎉 ICE connection established - Video should be flowing!");
+            updateStatus("🎉 Video streams connected!", "connected");
+            break;
+          case 'disconnected':
+            updateStatus("⚠️ Connection lost", "warning");
+            break;
+          case 'failed':
+            log("❌ ICE connection failed");
+            updateStatus("❌ Connection failed", "error");
+            break;
         }
+      };
+
+      // Monitor data channel state
+      peerConnection.ondatachannel = (event) => {
+        log("📡 Data channel received");
       };
     }
 
@@ -608,7 +680,7 @@
         }
         
         socket.emit("call:accepted", { callId: currentCallId });
-        updateStatus("✅ Call accepted - Connecting...", "connected");
+        updateStatus("✅ Call accepted - Connecting streams...", "connected");
         startAutoEndTimer();
         
         document.getElementById("callIdHolder").style.display = "none";
@@ -643,6 +715,7 @@
       currentCallId = null;
       targetUserId = null;
       isCallInitiator = false;
+      iceCandidateQueue = []; // Clear ICE candidate queue
       
       document.getElementById("callIdHolder").style.display = "none";
 
@@ -657,9 +730,9 @@
         callTimer = null;
       }
 
-      // Keep local stream running for next call
-      // Clear remote video only
-      document.getElementById("remoteVideo").srcObject = null;
+      // Clear remote video
+      const remoteVideo = document.getElementById("remoteVideo");
+      remoteVideo.srcObject = null;
       
       updateRemoteStatus("Waiting for connection");
       updateStatus("Ready for new call", "");
@@ -680,7 +753,7 @@
     }
 
     // Initialize
-    log("🚀 WebRTC Video Call Interface Ready");
+    log("🚀 WebRTC Video Call Interface Ready - Remote Video Fixed");
     updateStatus("Ready - Test camera first, then connect", "");
     updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
   </script>
