@@ -42,6 +42,7 @@
     let socket;
     let peerConnection;
     let localStream;
+    let remoteStream = new MediaStream();
     let currentCallId = null;
     let callerSocketId = null;
     let callTimer;
@@ -85,13 +86,18 @@
 
       socket.on("offer", async ({ offer, from }) => {
         log("📡 Received offer from caller");
-        await startCamera();
-        await createPeerConnection(from);
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        socket.emit("answer", { answer, to: from });
-        log("📡 Answer sent to caller");
+        try {
+          await startCamera();
+          callerSocketId = from;
+          await createPeerConnection(from);
+          await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+          socket.emit("answer", { answer, to: from });
+          log("📡 Answer sent to caller");
+        } catch (error) {
+          log("❌ Error handling offer: " + error.message);
+        }
       });
 
       socket.on("answer", async ({ answer }) => {
@@ -104,10 +110,12 @@
         if (peerConnection && peerConnection.remoteDescription) {
           try {
             await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            log("🧊 ICE candidate added");
+            log("🧊 ICE candidate added successfully");
           } catch (e) {
-            console.error("ICE candidate error:", e);
+            log("❌ ICE candidate error: " + e.message);
           }
+        } else {
+          log("⚠️ ICE candidate received but peer connection not ready");
         }
       });
 
@@ -138,24 +146,38 @@
       const receiverId = document.getElementById("receiverId").value.trim();
       if (!callerId || !receiverId) return alert("Enter both caller and receiver IDs");
 
-      isCallInitiator = true;
-      await startCamera();
-      await createPeerConnection(receiverId);
+      try {
+        isCallInitiator = true;
+        callerSocketId = receiverId;
 
-      // First emit call initiated, then create and send offer
-      socket.emit("call:initiated", { callerId, receiverId, callType: "video" });
-      
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      socket.emit("offer", { offer, to: receiverId });
-      
-      log("📤 Call initiated and offer sent");
+        socket.emit("call:initiated", { callerId, receiverId, callType: "video" });
+
+        await startCamera();
+        await createPeerConnection(receiverId);
+
+        const offer = await peerConnection.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
+        await peerConnection.setLocalDescription(offer);
+        socket.emit("offer", { offer, to: receiverId });
+
+        log("📤 Call initiated and offer sent");
+      } catch (error) {
+        log("❌ Error initiating call: " + error.message);
+        resetCall();
+      }
     }
 
     async function createPeerConnection(targetId) {
-      peerConnection = new RTCPeerConnection(config);
+      if (peerConnection) {
+        peerConnection.close();
+      }
 
-      // Handle ICE candidates
+      peerConnection = new RTCPeerConnection(config);
+      remoteStream = new MediaStream();
+      log("🔗 Created new peer connection");
+
       peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           socket.emit("ice-candidate", { candidate: event.candidate, to: targetId });
@@ -163,41 +185,45 @@
         }
       };
 
-      // Handle remote stream
       peerConnection.ontrack = (event) => {
-        log("🎥 Remote video stream received");
-        const remoteVideo = document.getElementById("remoteVideo");
-        if (remoteVideo.srcObject !== event.streams[0]) {
-          remoteVideo.srcObject = event.streams[0];
-          log("🎥 Remote video displayed");
-        }
+        remoteStream.addTrack(event.track);
+        document.getElementById("remoteVideo").srcObject = remoteStream;
+        log(`🎥 Remote ${event.track.kind} track added`);
       };
 
-      // Handle connection state changes
       peerConnection.onconnectionstatechange = () => {
         log(`🔗 Connection state: ${peerConnection.connectionState}`);
+        if (peerConnection.connectionState === 'connected') {
+          log("✅ Peer connection established successfully!");
+        }
       };
 
       peerConnection.oniceconnectionstatechange = () => {
         log(`🧊 ICE connection state: ${peerConnection.iceConnectionState}`);
+        if (peerConnection.iceConnectionState === 'connected') {
+          log("✅ ICE connection successful!");
+        }
       };
 
-      // Add local stream to peer connection
       if (localStream) {
         localStream.getTracks().forEach(track => {
           peerConnection.addTrack(track, localStream);
-          log(`📹 Added ${track.kind} track to peer connection`);
+          log(`📹 Added local ${track.kind} track to peer connection`);
         });
+      } else {
+        log("❌ No local stream available to add tracks");
       }
     }
 
     async function acceptCall() {
-      if (!currentCallId || !callerSocketId) return alert("No incoming call.");
+      if (!currentCallId) return alert("No incoming call.");
 
       try {
-        // Camera should already be started from the offer handler
+        log("✅ Accepting call...");
+        await startCamera();
+        await createPeerConnection(callerSocketId);
         socket.emit("call:accepted", { callId: currentCallId });
-        log("✅ Call accepted - waiting for connection");
+        log("✅ Call accepted - peer connection should be active");
         startAutoEndTimer();
       } catch (error) {
         log("❌ Error accepting call: " + error.message);
@@ -227,29 +253,21 @@
 
     function resetCall() {
       currentCallId = null;
-      callerSocketId = null;
-      isCallInitiator = false;
+      if (peerConnection) peerConnection.close();
+      peerConnection = null;
       document.getElementById("callIdHolder").textContent = "";
-      
-      if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-      }
-      
-      if (callTimer) {
-        clearTimeout(callTimer);
-        callTimer = null;
-      }
+      clearTimeout(callTimer);
+    }
 
-      // Stop local stream
-      if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-        document.getElementById("localVideo").srcObject = null;
-        document.getElementById("remoteVideo").srcObject = null;
-      }
-      
-      log("🔄 Call reset completed");
+    function startAutoEndTimer() {
+      const durationInput = document.getElementById("callDuration");
+      const minutes = parseInt(durationInput.value);
+      if (isNaN(minutes) || minutes <= 0) return;
+
+      const durationMs = minutes * 60 * 1000;
+      callTimer = setTimeout(() => {
+        endCall();
+      }, durationMs);
     }
 
     async function startCamera() {
@@ -257,38 +275,19 @@
         log("🎥 Camera already active");
         return;
       }
-      
+
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: 640, height: 480 }, 
-          audio: true 
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480 },
+          audio: true
         });
         document.getElementById("localVideo").srcObject = localStream;
         log("🎥 Camera & microphone access granted");
+        log("🎥 Local stream tracks: " + localStream.getTracks().map(t => t.kind).join(", "));
       } catch (err) {
         log("❌ Failed to access camera/microphone: " + err.message);
         throw err;
       }
-    }
-
-    function startAutoEndTimer() {
-      const durationInput = document.getElementById("callDuration").value;
-      const durationInMinutes = parseInt(durationInput, 10);
-      if (isNaN(durationInMinutes) || durationInMinutes <= 0) {
-        log("⏱ Invalid duration. Defaulting to 1 minute.");
-        callTimer = setTimeout(() => {
-          log("⌛ Auto-ending call (1 minute)");
-          endCall();
-        }, 60 * 1000);
-        return;
-      }
-      
-      callTimer = setTimeout(() => {
-        log(`⌛ Auto-ending call (${durationInMinutes} minutes)`);
-        endCall();
-      }, durationInMinutes * 60 * 1000);
-      
-      log(`⏱ Call will auto-end in ${durationInMinutes} minute(s)`);
     }
   </script>
 </body>
