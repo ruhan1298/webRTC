@@ -17,6 +17,10 @@ const sequelize = new Sequelize('webrtc_9ecp', 'webrtcuser', 'Hp8OJSY9UfH1IKlFAQ
 })();
 
 module.exports = sequelize;
+
+
+
+
 // const { Sequelize, DataTypes } = require('sequelize');
 
 
