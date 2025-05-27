@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>WebRTC Video Call - Fixed Remote Video</title>
+  <title>WebRTC Video Call - Camera/Mic Controls</title>
   <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <style>
     body {
@@ -27,6 +27,7 @@
     .video-box {
       flex: 1;
       max-width: 500px;
+      position: relative;
     }
     .video-box h3 {
       margin: 0 0 10px 0;
@@ -42,6 +43,79 @@
       border: 2px solid #ddd;
       border-radius: 8px;
       object-fit: cover;
+    }
+    .video-controls {
+      position: absolute;
+      bottom: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 10;
+    }
+    .control-btn {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    .control-btn.video-on {
+      background: #4285f4;
+      color: white;
+    }
+    .control-btn.video-off {
+      background: #ea4335;
+      color: white;
+    }
+    .control-btn.audio-on {
+      background: #34a853;
+      color: white;
+    }
+    .control-btn.audio-off {
+      background: #ea4335;
+      color: white;
+    }
+    .control-btn:hover {
+      transform: scale(1.1);
+    }
+    .video-off-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #2d2d2d;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 18px;
+      border-radius: 8px;
+      z-index: 5;
+    }
+    .video-off-overlay .icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+    .audio-muted-indicator {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      background: rgba(234, 67, 53, 0.9);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 20px;
+      font-size: 14px;
+      z-index: 10;
+      display: none;
     }
     .controls {
       display: flex;
@@ -120,7 +194,7 @@
 </head>
 <body>
   <div class="container">
-    <h2>📞 WebRTC Video Call - Fixed Remote Video</h2>
+    <h2>📞 WebRTC Video Call - Camera/Mic Controls</h2>
 
     <!-- Permission Status -->
     <div id="permissionStatus" class="permission-box">
@@ -161,11 +235,29 @@
       <div class="video-box">
         <h3>🎥 Your Video</h3>
         <video id="localVideo" autoplay playsinline muted></video>
+        <div id="localVideoOff" class="video-off-overlay" style="display: none;">
+          <div class="icon">📹</div>
+          <div>Camera is off</div>
+        </div>
+        <div id="localAudioMuted" class="audio-muted-indicator">🔇 Muted</div>
+        <div class="video-controls">
+          <button id="localVideoBtn" class="control-btn video-off" onclick="toggleLocalVideo()" title="Turn camera on/off">
+            📹
+          </button>
+          <button id="localAudioBtn" class="control-btn audio-off" onclick="toggleLocalAudio()" title="Turn microphone on/off">
+            🎤
+          </button>
+        </div>
         <div style="text-align: center; margin-top: 5px; font-size: 12px;" id="localStatus">Camera off</div>
       </div>
       <div class="video-box">
         <h3>🎥 Remote Video</h3>
         <video id="remoteVideo" autoplay playsinline></video>
+        <div id="remoteVideoOff" class="video-off-overlay" style="display: none;">
+          <div class="icon">📹</div>
+          <div>Remote camera is off</div>
+        </div>
+        <div id="remoteAudioMuted" class="audio-muted-indicator">🔇 Remote muted</div>
         <div style="text-align: center; margin-top: 5px; font-size: 12px;" id="remoteStatus">Waiting for connection</div>
       </div>
     </div>
@@ -182,7 +274,13 @@
     let callTimer;
     let isCallInitiator = false;
     let permissionGranted = false;
-    let iceCandidateQueue = []; // Queue for ICE candidates
+    let iceCandidateQueue = [];
+    
+    // Media state tracking
+    let localVideoEnabled = false;
+    let localAudioEnabled = false;
+    let remoteVideoEnabled = true;
+    let remoteAudioEnabled = true;
 
     const config = {
       iceServers: [
@@ -226,6 +324,108 @@
       }
     }
 
+    // Media control functions
+    function toggleLocalVideo() {
+      if (!localStream) {
+        alert("Please start camera first!");
+        return;
+      }
+
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        localVideoEnabled = !localVideoEnabled;
+        videoTrack.enabled = localVideoEnabled;
+        
+        // Update UI
+        const btn = document.getElementById("localVideoBtn");
+        const overlay = document.getElementById("localVideoOff");
+        
+        if (localVideoEnabled) {
+          btn.className = "control-btn video-on";
+          btn.innerHTML = "📹";
+          overlay.style.display = "none";
+          updateLocalStatus("Camera on");
+        } else {
+          btn.className = "control-btn video-off";
+          btn.innerHTML = "📹";
+          overlay.style.display = "flex";
+          updateLocalStatus("Camera off");
+        }
+
+        // Notify remote user
+        if (socket && targetUserId) {
+          socket.emit("media-state", {
+            to: targetUserId,
+            video: localVideoEnabled,
+            audio: localAudioEnabled
+          });
+        }
+
+        log(`📹 Local video ${localVideoEnabled ? 'enabled' : 'disabled'}`);
+      }
+    }
+
+    function toggleLocalAudio() {
+      if (!localStream) {
+        alert("Please start camera first!");
+        return;
+      }
+
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack) {
+        localAudioEnabled = !localAudioEnabled;
+        audioTrack.enabled = localAudioEnabled;
+        
+        // Update UI
+        const btn = document.getElementById("localAudioBtn");
+        const indicator = document.getElementById("localAudioMuted");
+        
+        if (localAudioEnabled) {
+          btn.className = "control-btn audio-on";
+          btn.innerHTML = "🎤";
+          indicator.style.display = "none";
+        } else {
+          btn.className = "control-btn audio-off";
+          btn.innerHTML = "🎤";
+          indicator.style.display = "block";
+        }
+
+        // Notify remote user
+        if (socket && targetUserId) {
+          socket.emit("media-state", {
+            to: targetUserId,
+            video: localVideoEnabled,
+            audio: localAudioEnabled
+          });
+        }
+
+        log(`🎤 Local audio ${localAudioEnabled ? 'enabled' : 'disabled'}`);
+      }
+    }
+
+    function updateRemoteMediaState(video, audio) {
+      remoteVideoEnabled = video;
+      remoteAudioEnabled = audio;
+
+      // Update remote video display
+      const remoteVideoOverlay = document.getElementById("remoteVideoOff");
+      const remoteAudioIndicator = document.getElementById("remoteAudioMuted");
+
+      if (remoteVideoEnabled) {
+        remoteVideoOverlay.style.display = "none";
+      } else {
+        remoteVideoOverlay.style.display = "flex";
+      }
+
+      if (remoteAudioEnabled) {
+        remoteAudioIndicator.style.display = "none";
+      } else {
+        remoteAudioIndicator.style.display = "block";
+      }
+
+      log(`📡 Remote media state - Video: ${video ? 'on' : 'off'}, Audio: ${audio ? 'on' : 'off'}`);
+    }
+
     // Test camera permission function
     async function testCameraPermission() {
       try {
@@ -252,17 +452,29 @@
 
         const localVideo = document.getElementById("localVideo");
         localVideo.srcObject = localStream;
-        updateLocalStatus(`Camera active (${localStream.getTracks().length} tracks)`);
+        
+        // Initially turn off video and audio
+        localVideoEnabled = false;
+        localAudioEnabled = false;
+        
+        const videoTrack = localStream.getVideoTracks()[0];
+        const audioTrack = localStream.getAudioTracks()[0];
+        
+        if (videoTrack) videoTrack.enabled = false;
+        if (audioTrack) audioTrack.enabled = false;
+        
+        // Update UI to show off state
+        document.getElementById("localVideoBtn").className = "control-btn video-off";
+        document.getElementById("localAudioBtn").className = "control-btn audio-off";
+        document.getElementById("localVideoOff").style.display = "flex";
+        document.getElementById("localAudioMuted").style.display = "block";
+        
+        updateLocalStatus("Camera & mic ready (off)");
         updatePermissionStatus("✅ Camera & Microphone permissions granted! Ready for calls.", true);
         
         permissionGranted = true;
-        log(`✅ Camera permission granted - ${localStream.getTracks().length} tracks available`);
+        log(`✅ Camera permission granted - ${localStream.getTracks().length} tracks available (initially off)`);
         
-        // Show track details
-        localStream.getTracks().forEach(track => {
-          log(`📹 Track ready: ${track.kind} - ${track.label}`);
-        });
-
       } catch (error) {
         log(`❌ Camera permission error: ${error.message}`);
         updatePermissionStatus("❌ Camera permission denied. Please allow camera access!", false);
@@ -303,7 +515,7 @@
         updateStatus(`📞 Incoming call from ${callerId}`, "warning");
         
         const callInfo = document.getElementById("callIdHolder");
-        callInfo.innerHTML = `📞 <strong>Incoming call from: ${callerId}</strong><br>🎥 Your camera will auto-start when you accept`;
+        callInfo.innerHTML = `📞 <strong>Incoming call from: ${callerId}</strong><br>🎥 Your camera will be available when you accept`;
         callInfo.style.display = "block";
       });
 
@@ -320,6 +532,11 @@
       socket.on("ice-candidate", async ({ candidate, from }) => {
         log(`🧊 Received ICE candidate from: ${from}`);
         await handleIceCandidate(candidate);
+      });
+
+      socket.on("media-state", ({ from, video, audio }) => {
+        log(`📡 Received media state from ${from}: video=${video}, audio=${audio}`);
+        updateRemoteMediaState(video, audio);
       });
 
       socket.on("call:accepted", ({ callId }) => {
@@ -376,14 +593,10 @@
         isCallInitiator = true;
         targetUserId = receiverId;
 
-        // Initialize call on server first
         socket.emit("call:initiated", { callerId, receiverId, callType: "video" });
-
-        // Create peer connection with existing stream
         await createPeerConnection();
         log("🔗 Peer connection created with local stream");
 
-        // Create offer
         const offer = await peerConnection.createOffer({
           offerToReceiveAudio: true,
           offerToReceiveVideo: true
@@ -392,7 +605,6 @@
         await peerConnection.setLocalDescription(offer);
         log("📡 Local description set with offer");
 
-        // Send offer
         socket.emit("offer", { offer, to: receiverId });
         
         log("📤 Offer sent to remote user");
@@ -410,24 +622,19 @@
         log(`📥 Processing offer from ${from}`);
         targetUserId = from;
         
-        // Ensure camera is ready before creating peer connection
         if (!localStream) {
           await startCamera();
           log("📹 Camera started for incoming call");
         }
 
-        // Create peer connection with local stream
         await createPeerConnection();
         log("🔗 Peer connection created for incoming call");
 
-        // Set remote description first
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         log("📡 Remote description set from offer");
 
-        // Process any queued ICE candidates now that we have remote description
         await processIceCandidateQueue();
 
-        // Create answer
         const answer = await peerConnection.createAnswer({
           offerToReceiveAudio: true,
           offerToReceiveVideo: true
@@ -436,7 +643,6 @@
         await peerConnection.setLocalDescription(answer);
         log("📡 Local description set with answer");
 
-        // Send answer
         socket.emit("answer", { answer, to: from });
         log("📤 Answer sent to caller");
 
@@ -451,7 +657,6 @@
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         log("📡 Remote description set from answer");
         
-        // Process any queued ICE candidates
         await processIceCandidateQueue();
         
         updateStatus("📡 Connection established - Waiting for video...", "connecting");
@@ -466,7 +671,6 @@
           await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
           log(`🧊 ICE candidate added: ${candidate.type || 'unknown'}`);
         } else {
-          // Queue the candidate for later processing
           iceCandidateQueue.push(candidate);
           log(`🧊 ICE candidate queued (${iceCandidateQueue.length} in queue)`);
         }
@@ -488,7 +692,7 @@
           }
         }
         
-        iceCandidateQueue = []; // Clear the queue
+        iceCandidateQueue = [];
         log("🧊 ICE candidate queue cleared");
       }
     }
@@ -502,12 +706,10 @@
       peerConnection = new RTCPeerConnection(config);
       log("🔗 New peer connection created");
 
-      // Ensure we have local stream
       if (!localStream) {
         await startCamera();
       }
 
-      // Add local stream tracks to peer connection
       if (localStream) {
         localStream.getTracks().forEach(track => {
           const sender = peerConnection.addTrack(track, localStream);
@@ -515,7 +717,6 @@
         });
       }
 
-      // Handle incoming remote stream
       peerConnection.ontrack = (event) => {
         log(`🎥 Received remote ${event.track.kind} track`);
         
@@ -526,7 +727,6 @@
           remoteVideo.srcObject = event.streams[0];
           updateRemoteStatus("Remote video connecting...");
           
-          // Add event listeners for remote video
           remoteVideo.onloadedmetadata = () => {
             log("🎥 Remote video metadata loaded");
             updateRemoteStatus("Remote video ready");
@@ -537,7 +737,6 @@
             updateRemoteStatus("Remote video playing");
           };
 
-          // Force play with better error handling
           const playPromise = remoteVideo.play();
           if (playPromise !== undefined) {
             playPromise
@@ -550,7 +749,6 @@
                 log(`❌ Remote video play error: ${e.message}`);
                 updateRemoteStatus("Remote video error");
                 
-                // Try to play again after user interaction
                 document.onclick = () => {
                   remoteVideo.play().catch(() => {});
                   document.onclick = null;
@@ -560,7 +758,6 @@
         }
       };
 
-      // ICE candidate handling
       peerConnection.onicecandidate = (event) => {
         if (event.candidate && targetUserId) {
           socket.emit("ice-candidate", { candidate: event.candidate, to: targetUserId });
@@ -570,7 +767,6 @@
         }
       };
 
-      // Connection state monitoring
       peerConnection.onconnectionstatechange = () => {
         const state = peerConnection.connectionState;
         log(`🔗 Connection state: ${state}`);
@@ -582,6 +778,15 @@
           case 'connected':
             updateStatus("✅ Both cameras connected!", "connected");
             updateRemoteStatus("Connected & active");
+            
+            // Send initial media state to remote user
+            if (socket && targetUserId) {
+              socket.emit("media-state", {
+                to: targetUserId,
+                video: localVideoEnabled,
+                audio: localAudioEnabled
+              });
+            }
             break;
           case 'disconnected':
             updateStatus("⚠️ Connection lost", "warning");
@@ -618,11 +823,6 @@
             break;
         }
       };
-
-      // Monitor data channel state
-      peerConnection.ondatachannel = (event) => {
-        log("📡 Data channel received");
-      };
     }
 
     async function startCamera() {
@@ -650,7 +850,19 @@
 
         const localVideo = document.getElementById("localVideo");
         localVideo.srcObject = localStream;
-        updateLocalStatus(`Camera active (${localStream.getTracks().length} tracks)`);
+        
+        // Initially disable tracks
+        const videoTrack = localStream.getVideoTracks()[0];
+        const audioTrack = localStream.getAudioTracks()[0];
+        
+        if (videoTrack) {
+          videoTrack.enabled = localVideoEnabled;
+        }
+        if (audioTrack) {
+          audioTrack.enabled = localAudioEnabled;
+        }
+        
+        updateLocalStatus(`Camera ready (${localStream.getTracks().length} tracks)`);
         
         // Force play local video
         localVideo.play().catch(e => log(`Local video play error: ${e.message}`));
@@ -673,7 +885,6 @@
       try {
         log("✅ Accepting call...");
         
-        // Make sure camera is ready
         if (!localStream) {
           updateStatus("📹 Starting camera for call...", "connecting");
           await startCamera();
@@ -715,7 +926,7 @@
       currentCallId = null;
       targetUserId = null;
       isCallInitiator = false;
-      iceCandidateQueue = []; // Clear ICE candidate queue
+      iceCandidateQueue = [];
       
       document.getElementById("callIdHolder").style.display = "none";
 
@@ -733,6 +944,12 @@
       // Clear remote video
       const remoteVideo = document.getElementById("remoteVideo");
       remoteVideo.srcObject = null;
+      
+      // Reset remote media state
+      document.getElementById("remoteVideoOff").style.display = "none";
+      document.getElementById("remoteAudioMuted").style.display = "none";
+      remoteVideoEnabled = true;
+      remoteAudioEnabled = true;
       
       updateRemoteStatus("Waiting for connection");
       updateStatus("Ready for new call", "");
@@ -753,7 +970,7 @@
     }
 
     // Initialize
-    log("🚀 WebRTC Video Call Interface Ready - Remote Video Fixed");
+    log("🚀 WebRTC Video Call Interface Ready - With Camera/Mic Controls");
     updateStatus("Ready - Test camera first, then connect", "");
     updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
   </script>
