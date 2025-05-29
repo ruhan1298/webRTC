@@ -5,7 +5,7 @@
   <title>WebRTC Video Call - Camera/Mic Controls</title>
   <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <style>
-    .chat-container {
+  .chat-container {
   border: 1px solid #ccc;
   padding: 10px;
   width: 300px;
@@ -15,28 +15,33 @@
   flex-direction: column;
 }
 
-.chat-messages {
-  flex-grow: 1;
-  overflow-y: auto;
-  margin-bottom: 10px;
-}
-
 .chat-msg {
-  padding: 5px;
-  margin: 4px 0;
-  border-radius: 4px;
+    margin: 5px 0;
+    padding: 8px 12px;
+    border-radius: 12px;
+    max-width: 80%;
+    word-wrap: break-word;
+    position: relative;
 }
 
 .chat-msg.self {
-  background-color: #daf1ff;
-  align-self: flex-end;
+    background: #007bff;
+    color: white;
+    margin-left: auto;
+    text-align: right;
 }
 
 .chat-msg.remote {
-  background-color: #eee;
-  align-self: flex-start;
+    background: #f1f1f1;
+    color: #333;
+    margin-right: auto;
 }
 
+.chat-time {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-left: 10px;
+}
     body {
       font-family: Arial, sans-serif;
       max-width: 1400px;
