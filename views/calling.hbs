@@ -1011,33 +1011,60 @@
     log("🚀 WebRTC Video Call Interface Ready - With Camera/Mic Controls");
     updateStatus("Ready - Test camera first, then connect", "");
     updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
-socket.on("chat:message", ({ from, message }) => {
-  appendChatMessage(`${from}: ${message}`, "remote");
-});
+// Client-side mein ye functions replace kariye
 
+// Fixed chat message sending function
 function sendChatMessage() {
     const message = document.getElementById("chatInput").value.trim();
     if (!message || !socket || !targetUserId) return;
 
+    // Get current user ID from input field
+    const currentUserId = document.getElementById("userId").value.trim();
+    
     socket.emit("chat:message", {
       to: targetUserId,
-      message,
-      from: socket.id,
+      message: message,
+      from: currentUserId  // Use actual userId instead of socket.id
     });
 
+    // Append to own chat immediately
     appendChatMessage(`You: ${message}`, "self");
     document.getElementById("chatInput").value = "";
-  }
+}
 
-  function appendChatMessage(msg, type = "remote") {
+// Fixed chat message receiving
+socket.on("chat:message", ({ from, message }) => {
+  appendChatMessage(`${from}: ${message}`, "remote");
+});
+
+// Optional: Handle message sent confirmation
+socket.on("chat:message:sent", ({ to, message, timestamp }) => {
+  console.log(`Message sent to ${to} at ${timestamp}`);
+});
+
+// Fixed appendChatMessage function with better styling
+function appendChatMessage(msg, type = "remote") {
     const chatMessages = document.getElementById("chatMessages");
     const div = document.createElement("div");
     div.className = type === "self" ? "chat-msg self" : "chat-msg remote";
     div.textContent = msg;
+    
+    // Add timestamp
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "chat-time";
+    timeSpan.textContent = new Date().toLocaleTimeString();
+    div.appendChild(timeSpan);
+    
     chatMessages.appendChild(div);
     chatMessages.scrollTop = chatMessages.scrollHeight;
-  }
+}
 
+// Enter key support for chat input
+document.getElementById("chatInput").addEventListener("keypress", function(e) {
+    if (e.key === "Enter") {
+        sendChatMessage();
+    }
+});
     // Handle window unload to clean up
     window.addEventListener("beforeunload", () => {
       if (socket) {

@@ -66,9 +66,46 @@ io.on("connection", (socket) => {
     console.log(`User ${userId} registered and joined room ${userId}`);
   });
 
-    socket.on("chat:message", ({ to, message, from }) => {
-    io.to(to).emit("chat:message", { from, message });
+  io.on("connection", (socket) => {
+  console.log("Socket connected:", socket.id);
+
+  // Join user to their room
+  socket.on("joinRoom", (userId) => {
+    socket.join(userId);
+    console.log(`User ${userId} joined their private room`);
   });
+
+  // Receive and send message
+// Server-side mein ye add kariye (socket handlers ke saath)
+
+// Chat message handler - ADD THIS
+socket.on("chat:message", ({ to, message, from }) => {
+  console.log(`Chat message from ${from} to ${to}: ${message}`);
+  
+  // Send message to receiver
+  io.to(to.toString()).emit("chat:message", {
+    from: from,
+    message: message
+  });
+  
+  // Optional: Send confirmation back to sender
+  socket.emit("chat:message:sent", {
+    to: to,
+    message: message,
+    timestamp: new Date()
+  });
+})
+  });
+
+// Media state handler bhi add kariye if missing
+// socket.on("media-state", ({ to, video, audio }) => {
+//   console.log(`Media state from socket ${socket.id} to user ${to}: video=${video}, audio=${audio}`);
+//   io.to(to.toString()).emit("media-state", {
+//     from: socket.id,
+//     video: video,
+//     audio: audio
+//   });
+// });
 
   // Call initiation
   socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
