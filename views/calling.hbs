@@ -1,630 +1,381 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Video Call with Chat</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8" />
+  <title>WebRTC Video Call - Camera/Mic Controls</title>
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+  <style>
+  .chat-container {
+  border: 1px solid #ccc;
+  padding: 10px;
+  width: 300px;
+  max-height: 400px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
+.chat-msg {
+    margin: 5px 0;
+    padding: 8px 12px;
+    border-radius: 12px;
+    max-width: 80%;
+    word-wrap: break-word;
+    position: relative;
+}
 
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-        }
+.chat-msg.self {
+    background: #007bff;
+    color: white;
+    margin-left: auto;
+    text-align: right;
+}
 
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
+.chat-msg.remote {
+    background: #f1f1f1;
+    color: #333;
+    margin-right: auto;
+}
 
-        .header h1 {
-            color: #2c3e50;
-            margin-bottom: 10px;
-            font-size: 2.5em;
-        }
-
-        .header p {
-            color: #7f8c8d;
-            font-size: 1.1em;
-        }
-
-        .main-content {
-            display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 30px;
-        }
-
-        .video-section {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .controls-panel {
-            background: #f8f9fa;
-            padding: 25px;
-            border-radius: 15px;
-            margin-bottom: 25px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
-        }
-
-        .permission-box {
-            background: #fff3cd;
-            border: 2px solid #ffeaa7;
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 20px;
-            text-align: center;
-            font-weight: 500;
-        }
-
-        .permission-granted {
-            background: #d4edda !important;
-            border-color: #00b894 !important;
-            color: #155724;
-        }
-
-        .input-group {
-            display: flex;
-            flex-direction: column;
-            margin-bottom: 15px;
-        }
-
-        .input-group label {
-            font-weight: 600;
-            margin-bottom: 5px;
-            color: #2c3e50;
-        }
-
-        .input-group input, .input-group select {
-            padding: 12px;
-            border: 2px solid #e9ecef;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s;
-        }
-
-        .input-group input:focus, .input-group select:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin: 5px;
-        }
-
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #5a67d8;
-            transform: translateY(-2px);
-        }
-
-        .btn-success {
-            background: #00b894;
-            color: white;
-        }
-
-        .btn-success:hover {
-            background: #00a085;
-        }
-
-        .btn-danger {
-            background: #e74c3c;
-            color: white;
-        }
-
-        .btn-danger:hover {
-            background: #c0392b;
-        }
-
-        .btn-warning {
-            background: #f39c12;
-            color: white;
-        }
-
-        .btn-warning:hover {
-            background: #e67e22;
-        }
-
-        .video-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 25px;
-        }
-
-        .video-wrapper {
-            position: relative;
-            background: #000;
-            border-radius: 15px;
-            overflow: hidden;
-            aspect-ratio: 4/3;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-
-        .video-wrapper video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .video-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 24px;
-            font-weight: 600;
-        }
-
-        .video-controls {
-            position: absolute;
-            bottom: 15px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            gap: 10px;
-        }
-
-        .control-btn {
-            width: 50px;
-            height: 50px;
-            border: none;
-            border-radius: 50%;
-            font-size: 20px;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-
-        .video-on {
-            background: #00b894;
-            color: white;
-        }
-
-        .video-off {
-            background: #e74c3c;
-            color: white;
-        }
-
-        .audio-on {
-            background: #667eea;
-            color: white;
-        }
-
-        .audio-off {
-            background: #e74c3c;
-            color: white;
-        }
-
-        .control-btn:hover {
-            transform: scale(1.1);
-        }
-
-        .status-indicators {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-
-        .status-item {
-            text-align: center;
-            flex: 1;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-            margin: 0 5px;
-        }
-
-        .status {
-            font-weight: 600;
-            padding: 10px;
-            border-radius: 8px;
-            text-align: center;
-            margin-bottom: 15px;
-        }
-
-        .status.connected {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .status.connecting {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .status.error {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .status.warning {
-            background: #ffeaa7;
-            color: #856404;
-        }
-
-        .chat-section {
-            background: #f8f9fa;
-            border-radius: 15px;
-            padding: 20px;
-            height: fit-content;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.05);
-        }
-
-        .chat-header {
-            text-align: center;
-            margin-bottom: 20px;
-            color: #2c3e50;
-            font-size: 1.3em;
-            font-weight: 600;
-        }
-
-        .chat-messages {
-            height: 400px;
-            overflow-y: auto;
-            padding: 15px;
-            border: 2px solid #e9ecef;
-            border-radius: 10px;
-            background: white;
-            margin-bottom: 15px;
-            scroll-behavior: smooth;
-        }
-
-        .chat-msg {
-            margin: 8px 0;
-            padding: 10px 15px;
-            border-radius: 15px;
-            max-width: 85%;
-            word-wrap: break-word;
-            animation: slideIn 0.3s ease;
-        }
-
-        .chat-msg.self {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            margin-left: auto;
-            text-align: right;
-            border-bottom-right-radius: 5px;
-        }
-
-        .chat-msg.remote {
-            background: #e9ecef;
-            color: #2c3e50;
-            margin-right: auto;
-            text-align: left;
-            border-bottom-left-radius: 5px;
-        }
-
-        .chat-text {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 500;
-        }
-
-        .chat-time {
-            font-size: 0.8em;
-            opacity: 0.7;
-            display: block;
-            font-weight: 400;
-        }
-
-        .chat-input-container {
-            display: flex;
-            gap: 10px;
-        }
-
-        .chat-input {
-            flex: 1;
-            padding: 12px;
-            border: 2px solid #e9ecef;
-            border-radius: 25px;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.3s;
-        }
-
-        .chat-input:focus {
-            border-color: #667eea;
-        }
-
-        .chat-send-btn {
-            padding: 12px 20px;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-
-        .chat-send-btn:hover {
-            background: #5a67d8;
-            transform: scale(1.05);
-        }
-
-        .logs {
-            background: #2c3e50;
-            color: #ecf0f1;
-            padding: 20px;
-            border-radius: 10px;
-            margin-top: 20px;
-            height: 200px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-
-        .call-info {
-            background: #667eea;
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            text-align: center;
-            display: none;
-        }
-
-        .audio-indicator {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(231, 76, 60, 0.9);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: 600;
-            display: none;
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        @media (max-width: 1200px) {
-            .main-content {
-                grid-template-columns: 1fr;
-            }
-            
-            .video-container {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                padding: 15px;
-            }
-            
-            .header h1 {
-                font-size: 2em;
-            }
-            
-            .video-wrapper {
-                aspect-ratio: 16/9;
-            }
-        }
-    </style>
+.chat-time {
+    font-size: 10px;
+    opacity: 0.7;
+    margin-left: 10px;
+}
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .video-container {
+      display: flex;
+      gap: 20px;
+      margin: 20px 0;
+      justify-content: center;
+    }
+    .video-box {
+      flex: 1;
+      max-width: 500px;
+      position: relative;
+    }
+    .video-box h3 {
+      margin: 0 0 10px 0;
+      padding: 10px;
+      background: #f0f0f0;
+      border-radius: 5px;
+      text-align: center;
+    }
+    video {
+      width: 100%;
+      height: 300px;
+      background: #000;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+    .video-controls {
+      position: absolute;
+      bottom: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 10;
+    }
+    .control-btn {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    .control-btn.video-on {
+      background: #4285f4;
+      color: white;
+    }
+    .control-btn.video-off {
+      background: #ea4335;
+      color: white;
+    }
+    .control-btn.audio-on {
+      background: #34a853;
+      color: white;
+    }
+    .control-btn.audio-off {
+      background: #ea4335;
+      color: white;
+    }
+    .control-btn:hover {
+      transform: scale(1.1);
+    }
+    .video-off-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #2d2d2d;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 18px;
+      border-radius: 8px;
+      z-index: 5;
+    }
+    .video-off-overlay .icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+    .audio-muted-indicator {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      background: rgba(234, 67, 53, 0.9);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 20px;
+      font-size: 14px;
+      z-index: 10;
+      display: none;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin: 10px 0;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+    .controls input {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .controls button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .btn-primary { background: #007bff; color: white; }
+    .btn-success { background: #28a745; color: white; }
+    .btn-danger { background: #dc3545; color: white; }
+    .btn-warning { background: #ffc107; color: black; }
+    .btn-secondary { background: #6c757d; color: white; }
+    
+    .status {
+      font-weight: bold;
+      padding: 12px;
+      border-radius: 6px;
+      margin: 10px 0;
+      text-align: center;
+    }
+    .status.connecting { background: #cce5ff; color: #0066cc; }
+    .status.connected { background: #d4edda; color: #155724; }
+    .status.error { background: #f8d7da; color: #721c24; }
+    .status.warning { background: #fff3cd; color: #856404; }
+    
+    #logs {
+      background: #1a1a1a;
+      color: #00ff00;
+      padding: 15px;
+      border-radius: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 250px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      margin: 20px 0;
+    }
+    .call-info {
+      background: #e3f2fd;
+      padding: 10px;
+      border-left: 4px solid #2196f3;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .permission-box {
+      background: #fffbf2;
+      border: 2px dashed #ff9800;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 10px 0;
+      text-align: center;
+    }
+    .permission-granted {
+      background: #f0f8f0;
+      border: 2px solid #4caf50;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎥 WebRTC Video Call</h1>
-            <p>High-quality video calling with real-time chat</p>
-        </div>
+  <div class="container">
+    <h2>📞 WebRTC Video Call - Camera/Mic Controls</h2>
 
-        <div class="main-content">
-            <div class="video-section">
-                <!-- Permission Status -->
-                <div id="permissionStatus" class="permission-box">
-                    🎥 Click 'Test Camera' to grant permissions first
-                </div>
-
-                <!-- Controls Panel -->
-                <div class="controls-panel">
-                    <div class="input-group">
-                        <label for="userId">Your User ID:</label>
-                        <input type="text" id="userId" placeholder="Enter your unique ID">
-                    </div>
-
-                    <div class="input-group">
-                        <label for="receiverId">Call User ID:</label>
-                        <input type="text" id="receiverId" placeholder="Enter user ID to call">
-                    </div>
-
-                    <div class="input-group">
-                        <label for="callDuration">Auto-end call after (minutes):</label>
-                        <select id="callDuration">
-                            <option value="1">1 minute</option>
-                            <option value="2" selected>2 minutes</option>
-                            <option value="5">5 minutes</option>
-                            <option value="10">10 minutes</option>
-                            <option value="30">30 minutes</option>
-                        </select>
-                    </div>
-
-                    <div style="text-align: center;">
-                        <button class="btn btn-primary" onclick="testCameraPermission()">🎥 Test Camera</button>
-                        <button class="btn btn-success" onclick="connectUser()">🔗 Connect</button>
-                        <button class="btn btn-primary" onclick="initiateCall()">📞 Start Call</button>
-                    </div>
-
-                    <div style="text-align: center; margin-top: 15px;">
-                        <button class="btn btn-success" onclick="acceptCall()">✅ Accept</button>
-                        <button class="btn btn-danger" onclick="rejectCall()">❌ Reject</button>
-                        <button class="btn btn-warning" onclick="cancelCall()">🛑 Cancel</button>
-                        <button class="btn btn-danger" onclick="endCall()">📴 End Call</button>
-                    </div>
-                </div>
-
-                <!-- Call Info -->
-                <div id="callIdHolder" class="call-info"></div>
-
-                <!-- Status -->
-                <div id="status" class="status">Ready - Test camera first, then connect</div>
-
-                <!-- Status Indicators -->
-                <div class="status-indicators">
-                    <div class="status-item">
-                        <div>📹 Local Camera</div>
-                        <div id="localStatus">Waiting</div>
-                    </div>
-                    <div class="status-item">
-                        <div>📺 Remote Video</div>
-                        <div id="remoteStatus">Waiting for connection</div>
-                    </div>
-                </div>
-
-                <!-- Video Container -->
-                <div class="video-container">
-                    <div class="video-wrapper">
-                        <video id="localVideo" autoplay muted playsinline></video>
-                        <div id="localVideoOff" class="video-overlay">
-                            📹 Your Camera (Off)
-                        </div>
-                        <div class="video-controls">
-                            <button id="localVideoBtn" class="control-btn video-off" onclick="toggleLocalVideo()">📹</button>
-                            <button id="localAudioBtn" class="control-btn audio-off" onclick="toggleLocalAudio()">🎤</button>
-                        </div>
-                        <div id="localAudioMuted" class="audio-indicator">🔇 Muted</div>
-                    </div>
-
-                    <div class="video-wrapper">
-                        <video id="remoteVideo" autoplay playsinline></video>
-                        <div id="remoteVideoOff" class="video-overlay" style="display: none;">
-                            📹 Remote Camera (Off)
-                        </div>
-                        <div id="remoteAudioMuted" class="audio-indicator">🔇 Remote Muted</div>
-                    </div>
-                </div>
-
-                <!-- Logs -->
-                <pre id="logs" class="logs">🚀 WebRTC Video Call Interface Ready - With Camera/Mic Controls
-</pre>
-            </div>
-
-            <!-- Chat Section -->
-            <div class="chat-section">
-                <div class="chat-header">💬 Chat Messages</div>
-                <div id="chatMessages" class="chat-messages"></div>
-                <div class="chat-input-container">
-                    <input type="text" id="chatInput" class="chat-input" placeholder="Type your message..." onkeypress="handleChatKeypress(event)">
-                    <button class="chat-send-btn" onclick="sendChatMessage()">Send</button>
-                </div>
-            </div>
-        </div>
+    <!-- Permission Status -->
+    <div id="permissionStatus" class="permission-box">
+      🎥 Click "Test Camera" to grant permissions first
     </div>
+
+    <div class="controls">
+      <button class="btn-warning" onclick="testCameraPermission()">🎥 Test Camera</button>
+      <div>
+        <label>Your User ID:</label>
+        <input type="text" id="userId" placeholder="Enter your unique ID" />
+        <button class="btn-primary" onclick="connectUser()">🔌 Connect</button>
+      </div>
+      
+      <div>
+        <label>Call User ID:</label>
+        <input type="text" id="receiverId" placeholder="Enter user ID to call" />
+      </div>
+      
+      <div>
+        <label>Duration:</label>
+        <input type="number" id="callDuration" value="2" min="1" max="30" style="width: 60px;" /> minutes
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn-success" onclick="initiateCall()">📞 Start Call</button>
+      <button class="btn-success" onclick="acceptCall()">✅ Accept Call</button>
+      <button class="btn-danger" onclick="rejectCall()">❌ Reject Call</button>
+      <button class="btn-warning" onclick="cancelCall()">🛑 Cancel Call</button>
+      <button class="btn-secondary" onclick="endCall()">📴 End Call</button>
+    </div>
+
+    <div id="status" class="status">Status: Not connected</div>
+    <div id="callIdHolder" class="call-info" style="display:none;"></div>
+
+    <div class="video-container">
+      <div class="video-box">
+        <h3>🎥 Your Video</h3>
+        <video id="localVideo" autoplay playsinline muted></video>
+        <div id="localVideoOff" class="video-off-overlay" style="display: none;">
+          <div class="icon">📹</div>
+          <div>Camera is off</div>
+        </div>
+        <div id="localAudioMuted" class="audio-muted-indicator">🔇 Muted</div>
+        <div class="video-controls">
+          <button id="localVideoBtn" class="control-btn video-off" onclick="toggleLocalVideo()" title="Turn camera on/off">
+            📹
+          </button>
+          <button id="localAudioBtn" class="control-btn audio-off" onclick="toggleLocalAudio()" title="Turn microphone on/off">
+            🎤
+          </button>
+        </div>
+        <div style="text-align: center; margin-top: 5px; font-size: 12px;" id="localStatus">Camera off</div>
+      </div>
+      <div class="video-box">
+        <h3>🎥 Remote Video</h3>
+        <video id="remoteVideo" autoplay playsinline></video>
+        <div id="remoteVideoOff" class="video-off-overlay" style="display: none;">
+          <div class="icon">📹</div>
+          <div>Remote camera is off</div>
+        </div>
+        <div id="remoteAudioMuted" class="audio-muted-indicator">🔇 Remote muted</div>
+        <div style="text-align: center; margin-top: 5px; font-size: 12px;" id="remoteStatus">Waiting for connection</div>
+      </div>
+    </div>
+    <div id="chatBox" class="chat-container">
+  <div id="chatMessages" class="chat-messages"></div>
+  <input type="text" id="chatInput" placeholder="Type a message..." />
+  <button onclick="sendChatMessage()">Send</button>
+</div>
+
+
+    <div id="logs"></div>
+  </div>
 
   <script>
     let socket;
-let peerConnection;
-let localStream;
-let currentCallId = null;
-let targetUserId = null;
-let callTimer;
-let isCallInitiator = false;
-let permissionGranted = false;
-let iceCandidateQueue = [];
+    let peerConnection;
+    let localStream;
+    let currentCallId = null;
+    let targetUserId = null;
+    let callTimer;
+    let isCallInitiator = false;
+    let permissionGranted = false;
+    let iceCandidateQueue = [];
+    
+    // Media state tracking
+    let localVideoEnabled = false;
+    let localAudioEnabled = false;
+    let remoteVideoEnabled = true;
+    let remoteAudioEnabled = true;
 
-// Media state tracking
-let localVideoEnabled = false;
-let localAudioEnabled = false;
-let remoteVideoEnabled = true;
-let remoteAudioEnabled = true;
-
-const config = {
-    iceServers: [
+    const config = {
+      iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
         { urls: "stun:stun.services.mozilla.com" },
         { urls: "stun:stun2.l.google.com:19302" }
-    ],
-    iceCandidatePoolSize: 10
-};
+      ],
+      iceCandidatePoolSize: 10
+    };
 
-function log(msg) {
-    const logs = document.getElementById("logs");
-    const timestamp = new Date().toLocaleTimeString();
-    logs.textContent += `[${timestamp}] ${msg}\n`;
-    logs.scrollTop = logs.scrollHeight;
-    console.log(`[WebRTC] ${msg}`);
-}
-
-function updateStatus(text, className = "") {
-    const statusEl = document.getElementById("status");
-    statusEl.textContent = text;
-    statusEl.className = `status ${className}`;
-}
-
-function updateLocalStatus(text) {
-    document.getElementById("localStatus").textContent = text;
-}
-
-function updateRemoteStatus(text) {
-    document.getElementById("remoteStatus").textContent = text;
-}
-
-function updatePermissionStatus(text, granted = false) {
-    const permEl = document.getElementById("permissionStatus");
-    permEl.textContent = text;
-    if (granted) {
-        permEl.className = "permission-box permission-granted";
-    } else {
-        permEl.className = "permission-box";
+    function log(msg) {
+      const logs = document.getElementById("logs");
+      const timestamp = new Date().toLocaleTimeString();
+      logs.textContent += `[${timestamp}] ${msg}\n`;
+      logs.scrollTop = logs.scrollHeight;
+      console.log(`[WebRTC] ${msg}`);
     }
-}
 
-// Media control functions
-function toggleLocalVideo() {
-    if (!localStream) {
+    function updateStatus(text, className = "") {
+      const statusEl = document.getElementById("status");
+      statusEl.textContent = text;
+      statusEl.className = `status ${className}`;
+    }
+
+    function updateLocalStatus(text) {
+      document.getElementById("localStatus").textContent = text;
+    }
+
+    function updateRemoteStatus(text) {
+      document.getElementById("remoteStatus").textContent = text;
+    }
+
+    function updatePermissionStatus(text, granted = false) {
+      const permEl = document.getElementById("permissionStatus");
+      permEl.textContent = text;
+      if (granted) {
+        permEl.className = "permission-box permission-granted";
+      } else {
+        permEl.className = "permission-box";
+      }
+    }
+
+    // Media control functions
+    function toggleLocalVideo() {
+      if (!localStream) {
         alert("Please start camera first!");
         return;
-    }
+      }
 
-    const videoTrack = localStream.getVideoTracks()[0];
-    if (videoTrack) {
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack) {
         localVideoEnabled = !localVideoEnabled;
         videoTrack.enabled = localVideoEnabled;
         
@@ -633,38 +384,38 @@ function toggleLocalVideo() {
         const overlay = document.getElementById("localVideoOff");
         
         if (localVideoEnabled) {
-            btn.className = "control-btn video-on";
-            btn.innerHTML = "📹";
-            overlay.style.display = "none";
-            updateLocalStatus("Camera on");
+          btn.className = "control-btn video-on";
+          btn.innerHTML = "📹";
+          overlay.style.display = "none";
+          updateLocalStatus("Camera on");
         } else {
-            btn.className = "control-btn video-off";
-            btn.innerHTML = "📹";
-            overlay.style.display = "flex";
-            updateLocalStatus("Camera off");
+          btn.className = "control-btn video-off";
+          btn.innerHTML = "📹";
+          overlay.style.display = "flex";
+          updateLocalStatus("Camera off");
         }
 
         // Notify remote user
         if (socket && targetUserId) {
-            socket.emit("media-state", {
-                to: targetUserId,
-                video: localVideoEnabled,
-                audio: localAudioEnabled
-            });
+          socket.emit("media-state", {
+            to: targetUserId,
+            video: localVideoEnabled,
+            audio: localAudioEnabled
+          });
         }
 
         log(`📹 Local video ${localVideoEnabled ? 'enabled' : 'disabled'}`);
+      }
     }
-}
 
-function toggleLocalAudio() {
-    if (!localStream) {
+    function toggleLocalAudio() {
+      if (!localStream) {
         alert("Please start camera first!");
         return;
-    }
+      }
 
-    const audioTrack = localStream.getAudioTracks()[0];
-    if (audioTrack) {
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack) {
         localAudioEnabled = !localAudioEnabled;
         audioTrack.enabled = localAudioEnabled;
         
@@ -673,73 +424,73 @@ function toggleLocalAudio() {
         const indicator = document.getElementById("localAudioMuted");
         
         if (localAudioEnabled) {
-            btn.className = "control-btn audio-on";
-            btn.innerHTML = "🎤";
-            indicator.style.display = "none";
+          btn.className = "control-btn audio-on";
+          btn.innerHTML = "🎤";
+          indicator.style.display = "none";
         } else {
-            btn.className = "control-btn audio-off";
-            btn.innerHTML = "🎤";
-            indicator.style.display = "block";
+          btn.className = "control-btn audio-off";
+          btn.innerHTML = "🎤";
+          indicator.style.display = "block";
         }
 
         // Notify remote user
         if (socket && targetUserId) {
-            socket.emit("media-state", {
-                to: targetUserId,
-                video: localVideoEnabled,
-                audio: localAudioEnabled
-            });
+          socket.emit("media-state", {
+            to: targetUserId,
+            video: localVideoEnabled,
+            audio: localAudioEnabled
+          });
         }
 
         log(`🎤 Local audio ${localAudioEnabled ? 'enabled' : 'disabled'}`);
+      }
     }
-}
 
-function updateRemoteMediaState(video, audio) {
-    remoteVideoEnabled = video;
-    remoteAudioEnabled = audio;
+    function updateRemoteMediaState(video, audio) {
+      remoteVideoEnabled = video;
+      remoteAudioEnabled = audio;
 
-    // Update remote video display
-    const remoteVideoOverlay = document.getElementById("remoteVideoOff");
-    const remoteAudioIndicator = document.getElementById("remoteAudioMuted");
+      // Update remote video display
+      const remoteVideoOverlay = document.getElementById("remoteVideoOff");
+      const remoteAudioIndicator = document.getElementById("remoteAudioMuted");
 
-    if (remoteVideoEnabled) {
+      if (remoteVideoEnabled) {
         remoteVideoOverlay.style.display = "none";
-    } else {
+      } else {
         remoteVideoOverlay.style.display = "flex";
-    }
+      }
 
-    if (remoteAudioEnabled) {
+      if (remoteAudioEnabled) {
         remoteAudioIndicator.style.display = "none";
-    } else {
+      } else {
         remoteAudioIndicator.style.display = "block";
+      }
+
+      log(`📡 Remote media state - Video: ${video ? 'on' : 'off'}, Audio: ${audio ? 'on' : 'off'}`);
     }
 
-    log(`📡 Remote media state - Video: ${video ? 'on' : 'off'}, Audio: ${audio ? 'on' : 'off'}`);
-}
-
-// Test camera permission function
-async function testCameraPermission() {
-    try {
+    // Test camera permission function
+    async function testCameraPermission() {
+      try {
         updatePermissionStatus("🎥 Testing camera permission...", false);
         log("🎥 Testing camera access...");
 
         if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-            localStream = null;
+          localStream.getTracks().forEach(track => track.stop());
+          localStream = null;
         }
 
         localStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-                width: { ideal: 640, max: 1280 },
-                height: { ideal: 480, max: 720 },
-                facingMode: 'user'
-            },
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            }
+          video: {
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            facingMode: 'user'
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
         });
 
         const localVideo = document.getElementById("localVideo");
@@ -767,335 +518,573 @@ async function testCameraPermission() {
         permissionGranted = true;
         log(`✅ Camera permission granted - ${localStream.getTracks().length} tracks available (initially off)`);
         
-    } catch (error) {
+      } catch (error) {
         log(`❌ Camera permission error: ${error.message}`);
         updatePermissionStatus("❌ Camera permission denied. Please allow camera access!", false);
         updateLocalStatus("Permission denied");
         alert(`Camera access failed: ${error.message}\n\nPlease:\n1. Allow camera permission\n2. Refresh page if needed`);
         permissionGranted = false;
+      }
     }
-}
 
-async function connectUser() {
-    const userId = document.getElementById("userId").value.trim();
-    if (!userId) return alert("Please enter your User ID first!");
+    async function connectUser() {
+      const userId = document.getElementById("userId").value.trim();
+      if (!userId) return alert("Please enter your User ID first!");
 
-    if (!permissionGranted) {
+      if (!permissionGranted) {
         alert("Please test camera permission first!");
         return;
-    }
+      }
 
-    if (socket) {
+      if (socket) {
         socket.disconnect();
+      }
+
+      socket = io("https://webrtc-1-pi3s.onrender.com")   
+
+      socket.on("connect", () => {
+        log(`✅ Connected to server with socket ID: ${socket.id}`);
+        updateStatus("✅ Connected to server", "connected");
+        socket.emit("register", userId);
+        log(`📝 Registered as user: ${userId}`);
+      });
+
+      socket.on("call:incoming", async ({ callerId, callType, callId, socketId }) => {
+        currentCallId = callId;
+        targetUserId = callerId;
+        isCallInitiator = false;
+        
+        log(`📞 Incoming ${callType} call from ${callerId}`);
+        updateStatus(`📞 Incoming call from ${callerId}`, "warning");
+        
+        const callInfo = document.getElementById("callIdHolder");
+        callInfo.innerHTML = `📞 <strong>Incoming call from: ${callerId}</strong><br>🎥 Your camera will be available when you accept`;
+        callInfo.style.display = "block";
+      });
+
+      socket.on("offer", async ({ offer, from }) => {
+        log(`📡 Received offer from: ${from}`);
+        await handleOffer(offer, from);
+      });
+
+      socket.on("answer", async ({ answer, from }) => {
+        log(`📡 Received answer from: ${from}`);
+        await handleAnswer(answer);
+      });
+
+      socket.on("ice-candidate", async ({ candidate, from }) => {
+        log(`🧊 Received ICE candidate from: ${from}`);
+        await handleIceCandidate(candidate);
+      });
+
+      socket.on("media-state", ({ from, video, audio }) => {
+        log(`📡 Received media state from ${from}: video=${video}, audio=${audio}`);
+        updateRemoteMediaState(video, audio);
+      });
+
+      socket.on("call:accepted", ({ callId }) => {
+        log("✅ Call accepted by remote user");
+        updateStatus("✅ Call Active - Connecting streams...", "connected");
+        startAutoEndTimer();
+      });
+
+      socket.on("call:rejected", ({ callId }) => {
+        log("❌ Call rejected by remote user");
+        updateStatus("❌ Call Rejected", "error");
+        resetCall();
+      });
+
+      socket.on("call:cancelled", ({ callId }) => {
+        log("🛑 Call cancelled");
+        updateStatus("🛑 Call Cancelled", "warning");
+        resetCall();
+      });
+
+      socket.on("call:ended", ({ callId, duration, status }) => {
+        log(`📴 Call ended - Duration: ${duration}s`);
+        updateStatus("📴 Call Ended", "");
+        resetCall();
+      });
+
+      socket.on("disconnect", () => {
+        log("❌ Disconnected from server");
+        updateStatus("❌ Disconnected", "error");
+      });
     }
 
-    // For demo purposes, we'll simulate a socket connection
-    socket = {
-        connected: true,
-        id: 'demo-socket-' + Math.random().toString(36).substr(2, 9),
-        emit: function(event, data) {
-            log(`📤 Socket emit: ${event} - ${JSON.stringify(data)}`);
-        },
-        on: function(event, callback) {
-            log(`📥 Socket listener registered: ${event}`);
-        },
-        disconnect: function() {
-            this.connected = false;
-            log("🔌 Socket disconnected");
-        }
-    };
-
-    log(`✅ Connected to server with socket ID: ${socket.id}`);
-    updateStatus("✅ Connected to server (demo mode)", "connected");
-    log(`📝 Registered as user: ${userId}`);
-}
-
-async function initiateCall() {
-    const callerId = document.getElementById("userId").value.trim();
-    const receiverId = document.getElementById("receiverId").value.trim();
-    
-    if (!callerId || !receiverId) {
+    async function initiateCall() {
+      const callerId = document.getElementById("userId").value.trim();
+      const receiverId = document.getElementById("receiverId").value.trim();
+      
+      if (!callerId || !receiverId) {
         return alert("Please enter both User IDs!");
-    }
-    
-    if (!socket || !socket.connected) {
+      }
+      
+      if (!socket || !socket.connected) {
         return alert("Please connect to server first!");
-    }
+      }
 
-    if (!permissionGranted || !localStream) {
+      if (!permissionGranted || !localStream) {
         alert("Please test camera permission first!");
         return;
-    }
+      }
 
-    try {
+      try {
         log(`📞 Starting video call to ${receiverId}...`);
         updateStatus("📞 Initiating call...", "connecting");
         
         isCallInitiator = true;
         targetUserId = receiverId;
 
+        socket.emit("call:initiated", { callerId, receiverId, callType: "video" });
         await createPeerConnection();
         log("🔗 Peer connection created with local stream");
 
         const offer = await peerConnection.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
         });
         
         await peerConnection.setLocalDescription(offer);
         log("📡 Local description set with offer");
 
+        socket.emit("offer", { offer, to: receiverId });
+        
         log("📤 Offer sent to remote user");
         updateStatus("📤 Calling... (Camera ready)", "connecting");
 
-        // Simulate call acceptance for demo
-        setTimeout(() => {
-            log("✅ Call accepted (demo)");
-            updateStatus("✅ Call Active", "connected");
-            startAutoEndTimer();
-        }, 2000);
-
-    } catch (error) {
+      } catch (error) {
         log(`❌ Error initiating call: ${error.message}`);
         updateStatus("❌ Call failed", "error");
         resetCall();
+      }
     }
-}
 
-async function createPeerConnection() {
-    try {
-        peerConnection = new RTCPeerConnection(config);
+    async function handleOffer(offer, from) {
+      try {
+        log(`📥 Processing offer from ${from}`);
+        targetUserId = from;
         
-        // Add local stream tracks
-        if (localStream) {
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
-                log(`➕ Added ${track.kind} track to peer connection`);
-            });
-        } else {
-            log("⚠️ No local stream available");
+        if (!localStream) {
+          await startCamera();
+          log("📹 Camera started for incoming call");
         }
 
-        // Handle incoming stream
-        peerConnection.ontrack = (event) => {
-            log(`📥 Received remote ${event.track.kind} track`);
-            const remoteVideo = document.getElementById("remoteVideo");
-            if (event.streams && event.streams[0]) {
-                remoteVideo.srcObject = event.streams[0];
-                updateRemoteStatus("Remote video connected");
-                log("📺 Remote video stream set");
-            }
-        };
+        await createPeerConnection();
+        log("🔗 Peer connection created for incoming call");
 
-        // Handle ICE candidates
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                log("🧊 Generated ICE candidate");
-                if (socket && targetUserId) {
-                    socket.emit("ice-candidate", {
-                        candidate: event.candidate,
-                        to: targetUserId
-                    });
-                }
-            } else {
-                log("🧊 ICE candidate gathering complete");
-            }
-        };
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+        log("📡 Remote description set from offer");
 
-        // Handle connection state changes
-        peerConnection.onconnectionstatechange = () => {
-            const state = peerConnection.connectionState;
-            log(`🔗 Connection state: ${state}`);
-            
-            switch (state) {
-                case 'connected':
-                    updateStatus("✅ Connected", "connected");
-                    break;
-                case 'disconnected':
-                    updateStatus("🔌 Disconnected", "warning");
-                    break;
-                case 'failed':
-                    updateStatus("❌ Connection failed", "error");
-                    resetCall();
-                    break;
-            }
-        };
+        await processIceCandidateQueue();
 
-        log("🔗 Peer connection created successfully");
-        return peerConnection;
+        const answer = await peerConnection.createAnswer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
+        
+        await peerConnection.setLocalDescription(answer);
+        log("📡 Local description set with answer");
 
-    } catch (error) {
-        log(`❌ Error creating peer connection: ${error.message}`);
-        throw error;
+        socket.emit("answer", { answer, to: from });
+        log("📤 Answer sent to caller");
+
+      } catch (error) {
+        log(`❌ Error handling offer: ${error.message}`);
+        updateStatus("❌ Call setup failed", "error");
+      }
     }
-}
 
-async function processIceCandidateQueue() {
-    while (iceCandidateQueue.length > 0) {
-        const candidate = iceCandidateQueue.shift();
-        try {
-            await peerConnection.addIceCandidate(candidate);
-            log("🧊 Processed queued ICE candidate");
-        } catch (error) {
-            log(`❌ Error processing ICE candidate: ${error.message}`);
-        }
-    }
-}
-
-async function handleAnswer(answer) {
-    try {
+    async function handleAnswer(answer) {
+      try {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         log("📡 Remote description set from answer");
         
         await processIceCandidateQueue();
         
-        updateStatus("📡 Connection established", "connected");
-        log("✅ WebRTC connection established");
-
-    } catch (error) {
+        updateStatus("📡 Connection established - Waiting for video...", "connecting");
+      } catch (error) {
         log(`❌ Error handling answer: ${error.message}`);
-        updateStatus("❌ Connection failed", "error");
+      }
     }
-}
 
-// Complete the missing handleIceCandidate function
-async function handleIceCandidate(candidate) {
-    try {
+    async function handleIceCandidate(candidate) {
+      try {
         if (peerConnection && peerConnection.remoteDescription) {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-            log("🧊 Added ICE candidate");
+          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+          log(`🧊 ICE candidate added: ${candidate.type || 'unknown'}`);
         } else {
-            log("🧊 Queuing ICE candidate (no remote description yet)");
-            iceCandidateQueue.push(new RTCIceCandidate(candidate));
+          iceCandidateQueue.push(candidate);
+          log(`🧊 ICE candidate queued (${iceCandidateQueue.length} in queue)`);
         }
-    } catch (error) {
-        log(`❌ Error handling ICE candidate: ${error.message}`);
+      } catch (error) {
+        log(`❌ ICE candidate error: ${error.message}`);
+      }
     }
-}
 
-// Handle incoming call offer
-async function handleOffer(offer, callerId) {
-    try {
-        log(`📞 Incoming call from ${callerId}`);
+    async function processIceCandidateQueue() {
+      if (iceCandidateQueue.length > 0 && peerConnection && peerConnection.remoteDescription) {
+        log(`🧊 Processing ${iceCandidateQueue.length} queued ICE candidates`);
         
-        if (!permissionGranted || !localStream) {
-            log("❌ Camera permission not granted, cannot accept call");
-            return;
-        }
-
-        isCallInitiator = false;
-        targetUserId = callerId;
-        
-        await createPeerConnection();
-        
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-        log("📡 Remote description set from offer");
-        
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        log("📡 Local description set with answer");
-        
-        // Send answer back
-        if (socket) {
-            socket.emit("call-answer", {
-                answer: answer,
-                to: callerId
-            });
+        for (const candidate of iceCandidateQueue) {
+          try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            log(`🧊 Queued ICE candidate processed: ${candidate.type || 'unknown'}`);
+          } catch (error) {
+            log(`❌ Error processing queued ICE candidate: ${error.message}`);
+          }
         }
         
-        await processIceCandidateQueue();
-        
-        updateStatus("📞 Call accepted", "connected");
-        log("✅ Call accepted and answer sent");
-        
-    } catch (error) {
-        log(`❌ Error handling call offer: ${error.message}`);
-        updateStatus("❌ Call failed", "error");
+        iceCandidateQueue = [];
+        log("🧊 ICE candidate queue cleared");
+      }
     }
-}
 
-// End call function
-function endCall() {
-    log("📴 Ending call...");
-    
-    if (callTimer) {
-        clearInterval(callTimer);
-        callTimer = null;
+    async function createPeerConnection() {
+      if (peerConnection) {
+        peerConnection.close();
+        log("🔗 Closed existing peer connection");
+      }
+
+      peerConnection = new RTCPeerConnection(config);
+      log("🔗 New peer connection created");
+
+      if (!localStream) {
+        await startCamera();
+      }
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          const sender = peerConnection.addTrack(track, localStream);
+          log(`📹 Added ${track.kind} track to peer connection`);
+        });
+      }
+
+      peerConnection.ontrack = (event) => {
+        log(`🎥 Received remote ${event.track.kind} track`);
+        
+        const remoteVideo = document.getElementById("remoteVideo");
+        
+        if (event.streams && event.streams[0]) {
+          log("🎥 Setting remote stream to video element");
+          remoteVideo.srcObject = event.streams[0];
+          updateRemoteStatus("Remote video connecting...");
+          
+          remoteVideo.onloadedmetadata = () => {
+            log("🎥 Remote video metadata loaded");
+            updateRemoteStatus("Remote video ready");
+          };
+
+          remoteVideo.oncanplay = () => {
+            log("🎥 Remote video can play");
+            updateRemoteStatus("Remote video playing");
+          };
+
+          const playPromise = remoteVideo.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                log("🎥 Remote video playing successfully");
+                updateRemoteStatus("Remote video active");
+                updateStatus("✅ Both cameras connected!", "connected");
+              })
+              .catch(e => {
+                log(`❌ Remote video play error: ${e.message}`);
+                updateRemoteStatus("Remote video error");
+                
+                document.onclick = () => {
+                  remoteVideo.play().catch(() => {});
+                  document.onclick = null;
+                };
+              });
+          }
+        }
+      };
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate && targetUserId) {
+          socket.emit("ice-candidate", { candidate: event.candidate, to: targetUserId });
+          log(`🧊 Sent ICE candidate: ${event.candidate.type || 'unknown'}`);
+        } else if (!event.candidate) {
+          log("🧊 ICE gathering completed");
+        }
+      };
+
+      peerConnection.onconnectionstatechange = () => {
+        const state = peerConnection.connectionState;
+        log(`🔗 Connection state: ${state}`);
+        
+        switch (state) {
+          case 'connecting':
+            updateStatus("🔗 Connecting both cameras...", "connecting");
+            break;
+          case 'connected':
+            updateStatus("✅ Both cameras connected!", "connected");
+            updateRemoteStatus("Connected & active");
+            
+            // Send initial media state to remote user
+            if (socket && targetUserId) {
+              socket.emit("media-state", {
+                to: targetUserId,
+                video: localVideoEnabled,
+                audio: localAudioEnabled
+              });
+            }
+            break;
+          case 'disconnected':
+            updateStatus("⚠️ Connection lost", "warning");
+            updateRemoteStatus("Disconnected");
+            break;
+          case 'failed':
+            updateStatus("❌ Connection failed", "error");
+            updateRemoteStatus("Connection failed");
+            log("❌ Peer connection failed - attempting to reset");
+            setTimeout(resetCall, 3000);
+            break;
+        }
+      };
+
+      peerConnection.oniceconnectionstatechange = () => {
+        const iceState = peerConnection.iceConnectionState;
+        log(`🧊 ICE connection state: ${iceState}`);
+        
+        switch (iceState) {
+          case 'checking':
+            updateStatus("🧊 Checking connection...", "connecting");
+            break;
+          case 'connected':
+          case 'completed':
+            log("🎉 ICE connection established - Video should be flowing!");
+            updateStatus("🎉 Video streams connected!", "connected");
+            break;
+          case 'disconnected':
+            updateStatus("⚠️ Connection lost", "warning");
+            break;
+          case 'failed':
+            log("❌ ICE connection failed");
+            updateStatus("❌ Connection failed", "error");
+            break;
+        }
+      };
     }
-    
-    if (peerConnection) {
+
+    async function startCamera() {
+      if (localStream) {
+        log("🎥 Camera already active");
+        return;
+      }
+
+      try {
+        log("🎥 Starting camera for call...");
+        updateLocalStatus("Starting camera...");
+
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            facingMode: 'user'
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+
+        const localVideo = document.getElementById("localVideo");
+        localVideo.srcObject = localStream;
+        
+        // Initially disable tracks
+        const videoTrack = localStream.getVideoTracks()[0];
+        const audioTrack = localStream.getAudioTracks()[0];
+        
+        if (videoTrack) {
+          videoTrack.enabled = localVideoEnabled;
+        }
+        if (audioTrack) {
+          audioTrack.enabled = localAudioEnabled;
+        }
+        
+        updateLocalStatus(`Camera ready (${localStream.getTracks().length} tracks)`);
+        
+        // Force play local video
+        localVideo.play().catch(e => log(`Local video play error: ${e.message}`));
+
+        log(`🎥 Camera started successfully - ${localStream.getTracks().length} tracks`);
+
+      } catch (error) {
+        log(`❌ Camera error: ${error.message}`);
+        updateLocalStatus("Camera failed");
+        alert(`Camera access failed: ${error.message}`);
+        throw error;
+      }
+    }
+
+    async function acceptCall() {
+      if (!currentCallId) {
+        return alert("No incoming call to accept!");
+      }
+
+      try {
+        log("✅ Accepting call...");
+        
+        if (!localStream) {
+          updateStatus("📹 Starting camera for call...", "connecting");
+          await startCamera();
+        }
+        
+        socket.emit("call:accepted", { callId: currentCallId });
+        updateStatus("✅ Call accepted - Connecting streams...", "connected");
+        startAutoEndTimer();
+        
+        document.getElementById("callIdHolder").style.display = "none";
+      } catch (error) {
+        log(`❌ Error accepting call: ${error.message}`);
+        updateStatus("❌ Failed to accept call", "error");
+      }
+    }
+
+    function rejectCall() {
+      if (!currentCallId) return alert("No call to reject!");
+      socket.emit("call:rejected", { callId: currentCallId });
+      log("❌ Call rejected");
+      resetCall();
+    }
+
+    function cancelCall() {
+      if (!currentCallId) return alert("No call to cancel!");
+      socket.emit("call:cancelled", { callId: currentCallId });
+      log("🛑 Call cancelled");
+      resetCall();
+    }
+
+    function endCall() {
+      if (!currentCallId) return alert("No active call to end!");
+      socket.emit("call:ended", { callId: currentCallId });
+      log("📴 Call ended by user");
+      resetCall();
+    }
+
+    function resetCall() {
+      currentCallId = null;
+      targetUserId = null;
+      isCallInitiator = false;
+      iceCandidateQueue = [];
+      
+      document.getElementById("callIdHolder").style.display = "none";
+
+      if (peerConnection) {
         peerConnection.close();
         peerConnection = null;
-    }
-    
-    if (socket && targetUserId) {
-        socket.emit("call-end", { to: targetUserId });
-    }
-    
-    resetCall();
-    updateStatus("📴 Call ended", "warning");
-    log("✅ Call ended successfully");
-}
+        log("🔗 Peer connection closed");
+      }
 
-// Reset call state
-function resetCall() {
-    currentCallId = null;
-    targetUserId = null;
-    isCallInitiator = false;
-    iceCandidateQueue = [];
-    
-    // Clear remote video
-    const remoteVideo = document.getElementById("remoteVideo");
-    if (remoteVideo) {
-        remoteVideo.srcObject = null;
-    }
-    
-    updateRemoteStatus("No remote connection");
-    
-    // Reset remote media indicators
-    const remoteVideoOverlay = document.getElementById("remoteVideoOff");
-    const remoteAudioIndicator = document.getElementById("remoteAudioMuted");
-    
-    if (remoteVideoOverlay) remoteVideoOverlay.style.display = "flex";
-    if (remoteAudioIndicator) remoteAudioIndicator.style.display = "none";
-    
-    if (callTimer) {
-        clearInterval(callTimer);
+      if (callTimer) {
+        clearTimeout(callTimer);
         callTimer = null;
+      }
+
+      // Clear remote video
+      const remoteVideo = document.getElementById("remoteVideo");
+      remoteVideo.srcObject = null;
+      
+      // Reset remote media state
+      document.getElementById("remoteVideoOff").style.display = "none";
+      document.getElementById("remoteAudioMuted").style.display = "none";
+      remoteVideoEnabled = true;
+      remoteAudioEnabled = true;
+      
+      updateRemoteStatus("Waiting for connection");
+      updateStatus("Ready for new call", "");
+      
+      log("🔄 Call reset completed (camera kept active)");
     }
+
+    function startAutoEndTimer() {
+      const minutes = parseInt(document.getElementById("callDuration").value) || 2;
+      const ms = minutes * 60 * 1000;
+
+      callTimer = setTimeout(() => {
+        log(`⏰ Auto-ending call after ${minutes} minutes`);
+        endCall();
+      }, ms);
+
+      log(`⏰ Auto-end timer set for ${minutes} minutes`);
+    }
+
+    // Initialize
+    log("🚀 WebRTC Video Call Interface Ready - With Camera/Mic Controls");
+    updateStatus("Ready - Test camera first, then connect", "");
+    updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
+// Client-side mein ye functions replace kariye
+
+// Fixed chat message sending function
+function sendChatMessage() {
+    const message = document.getElementById("chatInput").value.trim();
+    if (!message || !socket || !targetUserId) return;
+
+    // Get current user ID from input field
+    const currentUserId = document.getElementById("userId").value.trim();
+    
+    socket.emit("chat:message", {
+      to: targetUserId,
+      message: message,
+      from: currentUserId  // Use actual userId instead of socket.id
+    });
+
+    // Append to own chat immediately
+    appendChatMessage(`You: ${message}`, "self");
+    document.getElementById("chatInput").value = "";
 }
 
-// Auto-end timer for demo purposes
-function startAutoEndTimer() {
-    let seconds = 0;
-    callTimer = setInterval(() => {
-        seconds++;
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = seconds % 60;
-        const timeString = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-        
-        // Update call duration display if element exists
-        const durationEl = document.getElementById("callDuration");
-        if (durationEl) {
-            durationEl.textContent = `Call Duration: ${timeString}`;
-        }
-        
-        // Auto-end after 30 seconds for demo
-        if (seconds >= 30) {
-            log("⏰ Demo call auto-ending after 30 seconds");
-            endCall();
-        }
-    }, 1000);
-}
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    log("🚀 WebRTC Video Call App initialized");
-    updateStatus("🔌 Ready to connect", "ready");
-    updateLocalStatus("Camera not started");
-    updateRemoteStatus("No remote connection");
-    updatePermissionStatus("📷 Camera permission not tested", false);
+// Fixed chat message receiving
+socket.on("chat:message", ({ from, message }) => {
+  appendChatMessage(`${from}: ${message}`, "remote");
 });
+
+// Optional: Handle message sent confirmation
+socket.on("chat:message:sent", ({ to, message, timestamp }) => {
+  console.log(`Message sent to ${to} at ${timestamp}`);
+});
+
+// Fixed appendChatMessage function with better styling
+function appendChatMessage(msg, type = "remote") {
+    const chatMessages = document.getElementById("chatMessages");
+    const div = document.createElement("div");
+    div.className = type === "self" ? "chat-msg self" : "chat-msg remote";
+    div.textContent = msg;
+    
+    // Add timestamp
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "chat-time";
+    timeSpan.textContent = new Date().toLocaleTimeString();
+    div.appendChild(timeSpan);
+    
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Enter key support for chat input
+document.getElementById("chatInput").addEventListener("keypress", function(e) {
+    if (e.key === "Enter") {
+        sendChatMessage();
+    }
+});
+    // Handle window unload to clean up
+    window.addEventListener("beforeunload", () => {
+      if (socket) {
+        socket.disconnect();
+        log("🔌 Disconnected from server on unload");
+      }
+      if (peerConnection) {
+        peerConnection.close();
+        log("🔗 Peer connection closed on unload");
+      }
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        log("🎥 Local stream stopped on unload");
+      }
+    });
 
 
   </script>
