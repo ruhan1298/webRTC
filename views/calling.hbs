@@ -1224,170 +1224,33 @@ updateStatus("Ready - Test camera first, then connect", "");
 updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
 async function shareScreen() {
   try {
-    // Get screen stream
-    const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-      video: true,
-      audio: true // Include audio if needed
-    });
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    
+    // Replace video track in peer connection
     const screenTrack = screenStream.getVideoTracks()[0];
-
-    // Find existing video sender
-    let sender = peerConnection.getSenders().find(s => 
-      s.track && s.track.kind === 'video'
-    );
-
+    const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+    
     if (sender) {
-      // Replace existing video track with screen
-      await sender.replaceTrack(screenTrack);
-    } else {
-      // Add screen track if no existing video sender
-      sender = peerConnection.addTrack(screenTrack, screenStream);
+      sender.replaceTrack(screenTrack);
     }
 
     // Show screen stream locally
     document.getElementById("localVideo").srcObject = screenStream;
 
-    // IMPORTANT: Trigger renegotiation to notify remote peer
-    await createAndSendOffer(); // You need to implement this
-
-    // Optional: Send signaling message about screen share
-    sendSignalingMessage({
-      type: 'screen-share-started',
-      userId: yourUserId
-    });
-
-    // Handle screen sharing end
-    screenTrack.onended = async () => {
-      await stopScreenShare(sender);
+    // Handle when user stops sharing
+    screenTrack.onended = () => {
+      // Revert to camera
+      const cameraTrack = localStream.getVideoTracks()[0];
+      if (sender && cameraTrack) {
+        sender.replaceTrack(cameraTrack);
+        document.getElementById("localVideo").srcObject = localStream;
+      }
     };
-
   } catch (err) {
     console.error("Error sharing screen:", err);
-    alert("Could not share screen: " + err.message);
   }
 }
 
-async function stopScreenShare(sender) {
-  try {
-    // Revert to camera if available
-    if (localStream && localStream.getVideoTracks().length > 0) {
-      const cameraTrack = localStream.getVideoTracks()[0];
-      await sender.replaceTrack(cameraTrack);
-      document.getElementById("localVideo").srcObject = localStream;
-    } else {
-      // Remove video track completely
-      peerConnection.removeTrack(sender);
-      document.getElementById("localVideo").srcObject = null;
-    }
-
-    // Trigger renegotiation again
-    await createAndSendOffer();
-
-    // Send signaling message
-    sendSignalingMessage({
-      type: 'screen-share-stopped',
-      userId: yourUserId
-    });
-
-  } catch (err) {
-    console.error("Error stopping screen share:", err);
-  }
-}
-
-// Helper function to create and send offer
-async function createAndSendOffer() {
-  try {
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    
-    // Send offer to remote peer through your signaling server
-    sendSignalingMessage({
-      type: 'offer',
-      sdp: offer,
-      userId: yourUserId
-    });
-  } catch (err) {
-    console.error("Error creating offer:", err);
-  }
-}
-
-// Handle incoming signaling messages
-function handleSignalingMessage(message) {
-  switch (message.type) {
-    case 'offer':
-      handleOffer(message.sdp);
-      break;
-    case 'answer':
-      handleAnswer(message.sdp);
-      break;
-    case 'ice-candidate':
-      handleIceCandidate(message.candidate);
-      break;
-    case 'screen-share-started':
-      // Show UI indication that remote user is screen sharing
-      showScreenShareIndicator(message.userId);
-      break;
-    case 'screen-share-stopped':
-      // Hide screen share indicator
-      hideScreenShareIndicator(message.userId);
-      break;
-  }
-}
-
-async function handleOffer(offer) {
-  try {
-    await peerConnection.setRemoteDescription(offer);
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-    
-    sendSignalingMessage({
-      type: 'answer',
-      sdp: answer,
-      userId: yourUserId
-    });
-  } catch (err) {
-    console.error("Error handling offer:", err);
-  }
-}
-
-async function handleAnswer(answer) {
-  try {
-    await peerConnection.setRemoteDescription(answer);
-  } catch (err) {
-    console.error("Error handling answer:", err);
-  }
-}
-
-// Enhanced button with better UX
-function createScreenShareButton() {
-  const button = document.createElement('button');
-  button.className = 'btn-primary';
-  button.innerHTML = '🖥️ Share Screen';
-  button.onclick = async () => {
-    button.disabled = true;
-    button.innerHTML = '🔄 Starting...';
-    
-    try {
-      await shareScreen();
-      button.innerHTML = '⏹️ Stop Sharing';
-      button.onclick = stopScreenShareManual;
-    } catch (err) {
-      button.innerHTML = '🖥️ Share Screen';
-      button.disabled = false;
-    }
-  };
-  
-  return button;
-}
-
-async function stopScreenShareManual() {
-  // Find and stop screen track
-  const screenTrack = document.getElementById("localVideo").srcObject?.getVideoTracks()[0];
-  if (screenTrack) {
-    screenTrack.stop();
-    // The onended handler will take care of the rest
-  }
-}
     </script>
   </body>
 
