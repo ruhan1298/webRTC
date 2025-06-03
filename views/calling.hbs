@@ -1222,77 +1222,49 @@ document.addEventListener("DOMContentLoaded", function() {
 log("🚀 WebRTC Video Call Interface Ready - With Fixed Chat Functionality");
 updateStatus("Ready - Test camera first, then connect", "");
 updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
-function getBlankVideoTrack() {
-  const canvas = document.createElement("canvas");
-  canvas.width = 640;
-  canvas.height = 480;
-  const ctx = canvas.getContext("2d");
-  ctx.fillStyle = "black";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const stream = canvas.captureStream(5); // 5 FPS black video
-  return stream.getVideoTracks()[0];
-}
-
-// Ensure a video track is added to the peer connection
-async function ensureVideoSender() {
-  if (localStream && localStream.getVideoTracks().length > 0) {
-    const track = localStream.getVideoTracks()[0];
-    peerConnection.addTrack(track, localStream);
-    document.getElementById("localVideo").srcObject = localStream;
-  } else {
-    const blankTrack = getBlankVideoTrack();
-    const blankStream = new MediaStream([blankTrack]);
-    peerConnection.addTrack(blankTrack, blankStream);
-    document.getElementById("localVideo").srcObject = blankStream;
-  }
-}
-
 async function shareScreen() {
   try {
-    await ensureVideoSender(); // Make sure a video sender exists
-
     // Get screen stream
     const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
     const screenTrack = screenStream.getVideoTracks()[0];
 
-    // Replace the video track in the peer connection
-    const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+    // Try to find existing video sender
+    let sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
 
     if (sender) {
+      // Replace existing video track with screen
       sender.replaceTrack(screenTrack);
     } else {
+      // No existing video track, add screen track directly
       peerConnection.addTrack(screenTrack, screenStream);
     }
 
-    // Show screen locally
+    // Show screen stream locally
     document.getElementById("localVideo").srcObject = screenStream;
 
-    // Handle screen sharing stop
+    // When screen sharing stops
     screenTrack.onended = async () => {
+      // If localStream exists and has camera video track, revert to it
       if (localStream && localStream.getVideoTracks().length > 0) {
         const cameraTrack = localStream.getVideoTracks()[0];
+
         if (sender) {
           sender.replaceTrack(cameraTrack);
         } else {
           peerConnection.addTrack(cameraTrack, localStream);
         }
+
         document.getElementById("localVideo").srcObject = localStream;
       } else {
-        const blankTrack = getBlankVideoTrack();
-        const blankStream = new MediaStream([blankTrack]);
-        if (sender) {
-          sender.replaceTrack(blankTrack);
-        } else {
-          peerConnection.addTrack(blankTrack, blankStream);
-        }
-        document.getElementById("localVideo").srcObject = blankStream;
+        // Otherwise, just stop video
+        document.getElementById("localVideo").srcObject = null;
       }
     };
   } catch (err) {
     console.error("Error sharing screen:", err);
   }
 }
+
     </script>
   </body>
 
