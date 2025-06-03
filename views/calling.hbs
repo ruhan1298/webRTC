@@ -301,6 +301,9 @@
 
       <div class="controls">
         <button class="btn-warning" onclick="testCameraPermission()">🎥 Test Camera</button>
+
+        <button class="btn-primary" onclick="shareScreen()">🖥️ Share Screen</button>
+        <button class="btn-secondary" onclick="stopScreenShare()">🖥️ Stop Sharing</button>
         <div>
           <label>Your User ID:</label>
           <input type="text" id="userId" placeholder="Enter your unique ID" />
@@ -382,6 +385,8 @@ let callTimer;
 let isCallInitiator = false;
 let permissionGranted = false;
 let iceCandidateQueue = [];
+let screenStream;
+
 
 // Media state tracking
 let localVideoEnabled = false;
@@ -412,6 +417,7 @@ function updateStatus(text, className = "") {
   statusEl.textContent = text;
   statusEl.className = `status ${className}`;
 }
+
 
 function updateLocalStatus(text) {
   document.getElementById("localStatus").textContent = text;
@@ -1216,6 +1222,34 @@ document.addEventListener("DOMContentLoaded", function() {
 log("🚀 WebRTC Video Call Interface Ready - With Fixed Chat Functionality");
 updateStatus("Ready - Test camera first, then connect", "");
 updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
+async function shareScreen() {
+  try {
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    
+    // Replace video track in peer connection
+    const screenTrack = screenStream.getVideoTracks()[0];
+    const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+    
+    if (sender) {
+      sender.replaceTrack(screenTrack);
+    }
+
+    // Show screen stream locally
+    document.getElementById("localVideo").srcObject = screenStream;
+
+    // Handle when user stops sharing
+    screenTrack.onended = () => {
+      // Revert to camera
+      const cameraTrack = localStream.getVideoTracks()[0];
+      if (sender && cameraTrack) {
+        sender.replaceTrack(cameraTrack);
+        document.getElementById("localVideo").srcObject = localStream;
+      }
+    };
+  } catch (err) {
+    console.error("Error sharing screen:", err);
+  }
+}
     </script>
   </body>
 
