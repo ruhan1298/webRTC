@@ -68,17 +68,50 @@ io.on("connection", (socket) => {
   });
 
   // Chat message handler - FIXED
-  socket.on("chat:message", ({ to, message, from }) => {
-    console.log(`Chat message from ${from} to ${to}: ${message}`);
+// IMPROVED: Chat message handler with better error handling
+socket.on("chat:message", async ({ to, message, from }) => {
+  try {
+    console.log(`💬 Chat message from ${from} to ${to}: ${message}`);
+    
+    // Check if receiver is online
+    const receiverSockets = await io.in(to.toString()).fetchSockets();
+    
+    if (receiverSockets.length === 0) {
+      console.log(`❌ Receiver ${to} is offline`);
+      // Send delivery status back to sender
+      socket.emit("chat:delivery-failed", {
+        to: to,
+        message: "User is offline",
+        originalMessage: message
+      });
+      return;
+    }
     
     // Send message to receiver's room
     io.to(to.toString()).emit("chat:message", {
       from: from,
-      message: message
+      message: message,
+      timestamp: new Date().toISOString()
     });
     
-    console.log(`Message sent to room: ${to}`);
-  });
+    console.log(`✅ Message sent to room: ${to}`);
+    
+    // Send delivery confirmation to sender
+    socket.emit("chat:message-sent", {
+      to: to,
+      message: message,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error(`❌ Chat message error:`, error);
+    socket.emit("chat:delivery-failed", {
+      to: to,
+      message: "Message delivery failed",
+      originalMessage: message
+    });
+  }
+});
 
   // Media state handler
   socket.on("media-state", ({ to, video, audio }) => {
