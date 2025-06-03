@@ -1224,7 +1224,7 @@ updateStatus("Ready - Test camera first, then connect", "");
 updatePermissionStatus("🎥 Click 'Test Camera' to grant permissions first", false);
 async function shareScreen() {
   try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+    screenStream = await navigator.mediaDevices.getDisplayMedia({ video: false });
     
     // Replace video track in peer connection
     const screenTrack = screenStream.getVideoTracks()[0];
@@ -1250,6 +1250,7 @@ async function shareScreen() {
     console.error("Error sharing screen:", err);
   }
 }
+
     </script>
   </body>
 
