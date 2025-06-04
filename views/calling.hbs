@@ -86,6 +86,7 @@
       height: 250px;
       max-width: 600px;
       margin: 0 auto 30px;
+    }
     #chatBox {
       flex: 1;
       overflow-y: auto;
@@ -149,7 +150,6 @@
       <button onclick="toggleAudio()">Mute/Unmute</button>
       <button onclick="toggleVideo()">Camera On/Off</button>
       <button onclick="startScreenShare()">Share Screen</button>
-      
     </div>
 
     <section id="chatSection">
@@ -217,7 +217,7 @@
     });
 
     socket.on('chat-message', ({ msg }) => {
-      chatBox.innerHTML += <div>${msg}</div>;
+      chatBox.innerHTML += `<div>${msg}</div>`;
       chatBox.scrollTop = chatBox.scrollHeight;
     });
 
@@ -269,7 +269,7 @@
     function sendMessage(msg) {
       if (!msg.trim()) return;
       socket.emit('chat-message', { room, msg });
-      chatBox.innerHTML += <div style="text-align:right; color:#7fbf7f;">You: ${msg}</div>;
+      chatBox.innerHTML += `<div style="text-align:right; color:#7fbf7f;">You: ${msg}</div>`;
       chatBox.scrollTop = chatBox.scrollHeight;
       document.getElementById('chatInput').value = '';
     }
@@ -280,7 +280,7 @@
         const diff = Date.now() - startTime;
         const mins = Math.floor(diff / 60000);
         const secs = Math.floor((diff % 60000) / 1000);
-        document.getElementById('callTimer').innerText = ${mins}:${secs.toString().padStart(2, '0')};
+        document.getElementById('callTimer').innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
       }, 1000);
     }
   </script>
