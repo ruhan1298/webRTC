@@ -83,28 +83,34 @@ const room = require('./model/room');
 const user = require('./model/user');
 // user.sync({force:true})
 // Store room information
-io.on('connection', socket => {
-  socket.on('join', room => {
+io.on('connection', (socket) => {
+  socket.on('join', (room) => {
     socket.join(room);
     socket.to(room).emit('user-joined', socket.id);
   });
 
-  socket.on('offer', data => {
-    socket.to(data.room).emit('offer', data.offer, socket.id);
+  socket.on('offer', ({ room, offer, to }) => {
+    io.to(to).emit('offer', { offer, from: socket.id });
   });
 
-  socket.on('answer', data => {
-    socket.to(data.room).emit('answer', data.answer, socket.id);
+  socket.on('answer', ({ room, answer, to }) => {
+    io.to(to).emit('answer', { answer, from: socket.id });
   });
 
-  socket.on('ice-candidate', data => {
-    socket.to(data.room).emit('ice-candidate', data.candidate, socket.id);
+  socket.on('ice-candidate', ({ room, candidate, to }) => {
+    io.to(to).emit('ice-candidate', { candidate, from: socket.id });
   });
 
-  socket.on('chat-message', data => {
-    socket.to(data.room).emit('chat-message', data);
+  socket.on('chat-message', ({ room, msg }) => {
+    socket.to(room).emit('chat-message', { msg });
+  });
+
+  socket.on('disconnecting', () => {
+    const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
+    rooms.forEach(room => socket.to(room).emit('user-disconnected', socket.id));
   });
 });
+
 
 // ===================== ROUTES ===================== //
 // app.get('/calls/:userId', async (req, res) => {
