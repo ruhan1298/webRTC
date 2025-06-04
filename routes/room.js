@@ -7,6 +7,13 @@ const Room = require('../model/room'); // Assuming you have a Room model defined
 router.get('/link', function(req, res, next) {
   res.render('createlink', { title: 'Express' });
 });
+router.get('/call', (req, res) => {
+  const room = req.query.room;
+  console.log(room, "Room ID from query");
+  
+  if (!room) return res.status(400).send('Room ID required');
+  res.render('calling', { room }); // views/calling.hbs
+});
 
 router.post('/room-create',userAuth, async function(req, res) { 
  try {

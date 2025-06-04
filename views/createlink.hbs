@@ -1,23 +1,140 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Create Call Link</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Join or Create Call</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1e1e2f;
+      color: #f0f0f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .container {
+      background: #2c2c3e;
+      padding: 40px 50px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      text-align: center;
+      width: 320px;
+    }
+    h2 {
+      margin-bottom: 30px;
+      font-weight: 700;
+      font-size: 1.8rem;
+      letter-spacing: 1.5px;
+    }
     button {
-      padding: 10px 20px;
-      background: #4CAF50;
-      color: white;
+      background: #4a90e2;
       border: none;
+      color: white;
+      font-size: 1.1rem;
+      padding: 14px 30px;
+      border-radius: 8px;
       cursor: pointer;
-      font-size: 18px;
+      margin: 12px 0;
+      width: 100%;
+      transition: background 0.3s ease;
+    }
+    button:hover {
+      background: #357ABD;
+    }
+    input {
+      width: 100%;
+      padding: 12px 15px;
+      margin: 10px 0 18px 0;
+      border-radius: 8px;
+      border: none;
+      font-size: 1rem;
+    }
+    .room-id-container {
+      margin-top: 20px;
+      background: #393a50;
+      padding: 10px 15px;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: all;
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+    .copy-btn {
+      background: #f39c12;
+      border: none;
+      color: white;
+      padding: 6px 14px;
+      font-weight: 700;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    .copy-btn:hover {
+      background: #d87f0a;
+    }
+    .info-text {
+      font-size: 0.9rem;
+      margin-top: 8px;
+      color: #ccc;
     }
   </style>
 </head>
 <body>
-  <h1>📞 Start a Video Call</h1>
-  <form action="/call/generate-link" method="POST">
-    <button type="submit">Create Call Link</button>
-  </form>
+  <div class="container">
+    <h2>WebRTC Video Calling</h2>
+    <button id="createBtn">Create Call</button>
+    <div id="roomContainer" style="display:none;">
+      <div class="room-id-container">
+        <span id="roomIdDisplay"></span>
+        <button class="copy-btn" id="copyBtn">Copy</button>
+      </div>
+      <div class="info-text">Share this Room ID with others to join the call.</div>
+    </div>
+
+    <input id="roomInput" placeholder="Enter Room ID to Join" autocomplete="off" />
+    <button id="joinBtn">Join Call</button>
+  </div>
+
+  <script>
+    const createBtn = document.getElementById('createBtn');
+    const joinBtn = document.getElementById('joinBtn');
+    const roomInput = document.getElementById('roomInput');
+    const roomContainer = document.getElementById('roomContainer');
+    const roomIdDisplay = document.getElementById('roomIdDisplay');
+    const copyBtn = document.getElementById('copyBtn');
+
+    createBtn.addEventListener('click', () => {
+      const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+      roomIdDisplay.textContent = roomId;
+      roomContainer.style.display = 'block';
+      roomInput.value = '';
+      // Automatically redirect after 3 seconds or user can copy
+      setTimeout(() => {
+        window.location.href = `/room/call?room=${roomId}`;
+      }, 3000);
+    });
+
+    joinBtn.addEventListener('click', () => {
+      const roomId = roomInput.value.trim();
+      if (roomId.length === 6) {
+        window.location.href = `/room/call?room=${roomId}`;
+      } else {
+        alert('Please enter a valid 6-character Room ID');
+      }
+    });
+
+    copyBtn.addEventListener('click', () => {
+      const text = roomIdDisplay.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => (copyBtn.textContent = 'Copy'), 2000);
+      });
+    });
+  </script>
 </body>
 </html>

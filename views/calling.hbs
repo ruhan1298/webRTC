@@ -1,1418 +1,288 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Call with Room Links</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 15px;
-            padding: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-        
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        
-        .header h1 {
-            color: #333;
-            margin: 0;
-            font-size: 2.5em;
-        }
-        
-        .mode-selector {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .mode-btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: all 0.3s;
-        }
-        
-        .mode-btn.active {
-            background: #667eea;
-            color: white;
-        }
-        
-        .mode-btn:not(.active) {
-            background: #f0f0f0;
-            color: #666;
-        }
-        
-        .mode-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-        
-        .mode-section {
-            display: none;
-            margin-bottom: 30px;
-        }
-        
-        .mode-section.active {
-            display: block;
-        }
-        
-        .room-section {
-            background: #f8f9ff;
-            padding: 25px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            border-left: 5px solid #667eea;
-        }
-        
-        .room-section h3 {
-            margin: 0 0 15px 0;
-            color: #333;
-            font-size: 1.3em;
-        }
-        
-        .input-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            align-items: center;
-        }
-        
-        .input-group input {
-            flex: 1;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        
-        .input-group input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        
-        .btn {
-            padding: 12px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: bold;
-            transition: all 0.3s;
-        }
-        
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
-        
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-        
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
-        
-        .btn-warning {
-            background: #ffc107;
-            color: #333;
-        }
-        
-        .btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 3px 10px rgba(0,0,0,0.2);
-        }
-        
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .link-display {
-            background: #e8f5e8;
-            border: 2px solid #28a745;
-            border-radius: 6px;
-            padding: 15px;
-            margin: 15px 0;
-            display: none;
-        }
-        
-        .link-display.show {
-            display: block;
-        }
-        
-        .link-url {
-            background: white;
-            padding: 10px;
-            border-radius: 4px;
-            font-family: monospace;
-            font-size: 14px;
-            word-break: break-all;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-        }
-        
-        .video-container {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin: 20px 0;
-        }
-        
-        .video-box {
-            position: relative;
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            aspect-ratio: 4/3;
-        }
-        
-        .video-box video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        
-        .video-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 18px;
-            flex-direction: column;
-        }
-        
-        .video-label {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 5px 10px;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-        
-        .controls {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin: 20px 0;
-            flex-wrap: wrap;
-        }
-        
-        .control-btn {
-            width: 50px;
-            height: 50px;
-            border: none;
-            border-radius: 50%;
-            font-size: 20px;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        .video-on { background: #28a745; color: white; }
-        .video-off { background: #dc3545; color: white; }
-        .audio-on { background: #007bff; color: white; }
-        .audio-off { background: #6c757d; color: white; }
-        
-        .status {
-            text-align: center;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 15px 0;
-            font-weight: bold;
-        }
-        
-        .status.connected { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-        .status.connecting { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
-        .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-        .status.warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
-        
-        .permission-box {
-            background: #fff3cd;
-            border: 2px solid #ffeaa7;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
-            text-align: center;
-        }
-        
-        .permission-granted {
-            background: #d4edda;
-            border-color: #c3e6cb;
-            color: #155724;
-        }
-        
-        .chat-section {
-            background: #f8f9fa;
-            border-radius: 12px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-        
-        .chat-messages {
-            height: 200px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            padding: 10px;
-            background: white;
-            margin-bottom: 15px;
-        }
-        
-        .chat-msg {
-            margin-bottom: 10px;
-            padding: 8px;
-            border-radius: 6px;
-        }
-        
-        .chat-msg.self {
-            background: #e3f2fd;
-            text-align: right;
-        }
-        
-        .chat-msg.remote {
-            background: #f1f8e9;
-        }
-        
-        .chat-msg.error {
-            background: #ffebee;
-            color: #c62828;
-        }
-        
-        .logs {
-            background: #000;
-            color: #0f0;
-            padding: 15px;
-            border-radius: 8px;
-            height: 200px;
-            overflow-y: auto;
-            font-family: monospace;
-            font-size: 12px;
-            margin: 20px 0;
-        }
-        
-        .participant-info {
-            background: #e8f4fd;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
-            text-align: center;
-        }
-        
-        @media (max-width: 768px) {
-            .video-container {
-                grid-template-columns: 1fr;
-            }
-            
-            .mode-selector {
-                flex-direction: column;
-                align-items: center;
-            }
-            
-            .input-group {
-                flex-direction: column;
-            }
-            
-            .controls {
-                justify-content: center;
-            }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Call Room</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #121212;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      background: #1f1f1f;
+      padding: 15px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      font-size: 1.2rem;
+      letter-spacing: 1px;
+    }
+    #callTimer {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 1.2rem;
+      background: #292929;
+      padding: 8px 15px;
+      border-radius: 8px;
+      letter-spacing: 1.2px;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 30px;
+      gap: 15px;
+      background: #181818;
+    }
+    .videos {
+      flex: 1;
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    video {
+      background: #000;
+      border-radius: 12px;
+      box-shadow: 0 0 12px rgba(0,0,0,0.8);
+      width: 45%;
+      max-height: 400px;
+      object-fit: cover;
+      border: 3px solid #3a8ee6;
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 10px;
+    }
+    .controls button {
+      background: #3a8ee6;
+      border: none;
+      color: white;
+      font-size: 1rem;
+      padding: 12px 24px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+      min-width: 140px;
+    }
+    .controls button:hover {
+      background: #2a70c4;
+    }
+    #chatSection {
+      background: #222;
+      border-radius: 10px;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      height: 250px;
+      max-width: 600px;
+      margin: 0 auto 30px;
+    }
+    #chatBox {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 10px;
+      color: #ddd;
+      font-size: 0.95rem;
+      line-height: 1.3rem;
+      border-bottom: 1px solid #444;
+    }
+    #chatBox div {
+      margin-bottom: 8px;
+      word-wrap: break-word;
+    }
+    #chatInput {
+      margin-top: 12px;
+      padding: 10px 15px;
+      border-radius: 8px;
+      border: none;
+      font-size: 1rem;
+      outline: none;
+      width: 100%;
+      background: #333;
+      color: #eee;
+      box-sizing: border-box;
+      transition: background 0.3s ease;
+    }
+    #chatInput:focus {
+      background: #3a8ee6;
+      color: white;
+    }
+
+    @media (max-width: 720px) {
+      video {
+        width: 100%;
+        max-height: 250px;
+      }
+      .controls {
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+      #chatSection {
+        max-width: 100%;
+        height: 200px;
+      }
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🎥 Video Call with Room Links</h1>
-            <p>Google Meet/Zoom style link sharing</p>
-        </div>
+  <header>
+    <div>Room ID: <strong>{{room}}</strong></div>
+    <div id="callTimer">00:00</div>
+  </header>
 
-        <!-- Mode Selector -->
-        <div class="mode-selector">
-            <button class="mode-btn active" onclick="switchMode('room')">🔗 Room Links</button>
-            <button class="mode-btn" onclick="switchMode('direct')">📞 Direct Call</button>
-        </div>
-
-        <!-- Room Link Mode -->
-        <div id="roomMode" class="mode-section active">
-            <div class="room-section">
-                <h3>🎯 Create or Join Room</h3>
-                <div class="input-group">
-                    <input type="text" id="userName" placeholder="Enter your name" />
-                    <button class="btn btn-primary" onclick="setUserName()">Set Name</button>
-                </div>
-                
-                <div class="input-group">
-                    <button class="btn btn-success" onclick="createRoom()">Create New Room</button>
-                    <input type="text" id="roomIdInput" placeholder="Enter Room ID to join" />
-                    <button class="btn btn-primary" onclick="joinRoom()">Join Room</button>
-                </div>
-
-                <div id="linkDisplay" class="link-display">
-                    <h4>🔗 Share this link:</h4>
-                    <div id="roomLink" class="link-url"></div>
-                    <button class="btn btn-primary" onclick="copyLink()">📋 Copy Link</button>
-                    <button class="btn btn-success" onclick="startRoomCall()">🎥 Start Video</button>
-                </div>
-            </div>
-
-            <div id="participantInfo" class="participant-info" style="display: none;">
-                <h4>👥 Room Participants</h4>
-                <div id="participantList"></div>
-            </div>
-        </div>
-
-        <!-- Direct Call Mode -->
-        <div id="directMode" class="mode-section">
-            <div class="room-section">
-                <h3>📞 Direct User-to-User Call</h3>
-                <div class="input-group">
-                    <input type="text" id="userId" placeholder="Your User ID" />
-                    <button class="btn btn-primary" onclick="connectUser()">Connect to Server</button>
-                </div>
-                
-                <div class="input-group">
-                    <input type="text" id="receiverId" placeholder="Target User ID" />
-                    <button class="btn btn-success" onclick="initiateCall()">📞 Call User</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Permission Status -->
-      <!-- Permission Status -->
-      <div id="permissionStatus" class="permission-box">
-        🎥 Click "Test Camera" to grant permissions first
-      </div>
-
-      <div class="controls">
-        <button class="btn-warning" onclick="testCameraPermission()">🎥 Test Camera</button>
-            <button class="control-btn video-off" id="localVideoBtn" onclick="toggleLocalVideo()">📹</button>
-            <button class="control-btn audio-off" id="localAudioBtn" onclick="toggleLocalAudio()">🎤</button>
-            <button class="btn btn-danger" onclick="endCall()">📴 End Call</button>
-        </div>
-
-        <!-- Video Container -->
-        <div class="video-container">
-            <div class="video-box">
-                <div class="video-label">You</div>
-                <video id="localVideo" autoplay muted playsinline></video>
-                <div id="localVideoOff" class="video-overlay">
-                    📹 Camera Off
-                </div>
-                <div id="localAudioMuted" class="video-overlay" style="display: none; top: auto; bottom: 10px; right: 10px; left: auto; background: rgba(255,0,0,0.8); border-radius: 4px; padding: 5px;">
-                    🔇
-                </div>
-                <div id="localStatus" style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 5px; border-radius: 4px; font-size: 12px;">
-                    Waiting...
-                </div>
-            </div>
-            
-            <div class="video-box">
-                <div class="video-label">Remote</div>
-                <video id="remoteVideo" autoplay playsinline></video>
-                <div id="remoteVideoOff" class="video-overlay" style="display: none;">
-                    📹 Remote Camera Off
-                </div>
-                <div id="remoteAudioMuted" class="video-overlay" style="display: none; top: auto; bottom: 10px; right: 10px; left: auto; background: rgba(255,0,0,0.8); border-radius: 4px; padding: 5px;">
-                    🔇
-                </div>
-                <div id="remoteStatus" style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.7); color: white; padding: 5px; border-radius: 4px; font-size: 12px;">
-                    Waiting for connection
-                </div>
-            </div>
-        </div>
-
-        <!-- Status -->
-        <div id="status" class="status">Ready - Test camera first, then create/join room</div>
-
-        <!-- Call Controls (for incoming calls) -->
-        <div id="callIdHolder" style="display: none; background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 20px; margin: 15px 0; text-align: center;">
-            <div id="callInfo"></div>
-            <div style="margin-top: 15px;">
-                <button class="btn btn-success" onclick="acceptCall()">✅ Accept</button>
-                <button class="btn btn-danger" onclick="rejectCall()">❌ Reject</button>
-            </div>
-        </div>
-
-        <!-- Chat Section -->
-        <div class="chat-section">
-            <h3>💬 Chat</h3>
-            <div id="chatMessages" class="chat-messages"></div>
-            <div class="input-group">
-                <input type="text" id="chatInput" placeholder="Type a message..." />
-                <button class="btn btn-primary" onclick="sendChatMessage()">Send</button>
-            </div>
-        </div>
-
-        <!-- Logs -->
-        <div id="logs" class="logs"></div>
+  <main>
+    <div class="videos">
+      <video id="localVideo" autoplay muted playsinline></video>
+      <video id="remoteVideo" autoplay playsinline></video>
     </div>
 
-    <script>
-// Global variables
-let socket;
-let peerConnection;
-let localStream;
-let currentCallId = null;
-let targetUserId = null;
-let callTimer;
-let isCallInitiator = false;
-let permissionGranted = false;
-let iceCandidateQueue = [];
-let screenStream;
-let currentMode = 'room'; // 'room' or 'direct'
-let currentRoomId = null;
-let userName = null;
-let roomParticipants = [];
-
-// Media state tracking
-let localVideoEnabled = false;
-let localAudioEnabled = false;
-let remoteVideoEnabled = true;
-let remoteAudioEnabled = true;
-
-const config = {
-  // WebRTC configuration
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun.services.mozilla.com" },
-    { urls: "stun:stun2.l.google.com:19302" }
-  ],
-  iceCandidatePoolSize: 10
-};
-
-// Server configuration
-function getServerUrl() {
-  const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-
-  if (isLocalhost) {
-    return 'http://localhost:3002';
-  } else if (window.location.hostname === 'webrtc-1-pi3s.onrender.com') {
-    return 'https://webrtc-1-pi3s.onrender.com';
-  } else {
-    return window.location.origin; // Fallback to current origin for other live URLs
-  }
-}
-
-// Utility functions
-function log(msg) {
-  const logs = document.getElementById("logs");
-  const timestamp = new Date().toLocaleTimeString();
-  logs.textContent += `[${timestamp}] ${msg}\n`;
-  logs.scrollTop = logs.scrollHeight;
-  console.log(`[WebRTC] ${msg}`);
-}
-
-function updateStatus(text, className = "") {
-  const statusEl = document.getElementById("status");
-  statusEl.textContent = text;
-  statusEl.className = `status ${className}`;
-}
-
-function updateLocalStatus(text) {
-  document.getElementById("localStatus").textContent = text;
-}
-
-function updateRemoteStatus(text) {
-  document.getElementById("remoteStatus").textContent = text;
-}
-
-function updatePermissionStatus(text, granted = false) {
-  const permEl = document.getElementById("permissionStatus");
-  permEl.textContent = text;
-  if (granted) {
-    permEl.className = "permission-box permission-granted";
-  } else {
-    permEl.className = "permission-box";
-  }
-}
-
-// Mode switching
-function switchMode(mode) {
-  currentMode = mode;
-  
-  // Update button states
-  document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-  event.target.classList.add('active');
-  
-  // Show/hide sections
-  document.querySelectorAll('.mode-section').forEach(section => section.classList.remove('active'));
-  document.getElementById(mode + 'Mode').classList.add('active');
-  
-  // Disconnect current socket if switching modes
-  if (socket) {
-    socket.disconnect();
-    socket = null;
-  }
-  
-  updateStatus(`Switched to ${mode} mode`, "");
-  log(`Switched to ${mode} mode`);
-}
-
-// Room functionality
-function generateRoomId() {
-  return 'room_' + Math.random().toString(36).substr(2, 9);
-}
-
-function setUserName() {
-  const name = document.getElementById("userName").value.trim();
-  if (!name) {
-    alert("Please enter your name!");
-    return;
-  }
-  userName = name;
-  updateStatus(`Name set: ${userName}`, "connected");
-  log(`User name set: ${userName}`);
-}
-
-function createRoom() {
-  if (!userName) {
-    alert("Please set your name first!");
-    return;
-  }
-  
-  currentRoomId = generateRoomId();
-  const roomLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${currentRoomId}`;
-  
-  document.getElementById("roomLink").textContent = roomLink;
-  document.getElementById("linkDisplay").classList.add("show");
-  
-  updateStatus(`Room created: ${currentRoomId}`, "connected");
-  log(`Room created: ${currentRoomId}`);
-  
-  // Connect to server for room
-  connectToRoom(currentRoomId);
-}
-
-function joinRoom() {
-  const roomId = document.getElementById("roomIdInput").value.trim();
-  if (!roomId) {
-    alert("Please enter Room ID!");
-    return;
-  }
-  if (!userName) {
-    alert("Please set your name first!");
-    return;
-  }
-  
-  currentRoomId = roomId;
-  connectToRoom(roomId);
-}
-
-function connectToRoom(roomId) {
-  try {
-    if (socket) {
-      socket.disconnect();
-    }
-
-    const serverUrl = getServerUrl();
-    console.log(`🔌 Connecting to server: ${serverUrl}`);
-
-    socket = io(serverUrl, {
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 20000,
-      forceNew: true
-    });
-
-    socket.on("connect", () => {
-      log(`✅ Connected to server with socket ID: ${socket.id}`);
-      updateStatus("✅ Connected to server", "connected");
-      
-      // Join room
-      socket.emit("join-room", { roomId, userName });
-      log(`🏠 Joining room: ${roomId} as ${userName}`);
-      
-      setupSocketEventListeners();
-    });
-
-    socket.on("connect_error", (error) => {
-      console.error("❌ Connection error:", error);
-      updateStatus("❌ Connection failed - Check server", "error");
-    });
-
-    socket.on("disconnect", (reason) => {
-      console.log("❌ Disconnected from server:", reason);
-      updateStatus("❌ Disconnected", "error");
-    });
-
-  } catch (error) {
-    log(`❌ Connection error: ${error.message}`);
-    updateStatus("❌ Connection failed", "error");
-  }
-}
-
-// Direct connect functionality
-function connectToDirect() {
-  const userId = document.getElementById("directUserId").value.trim();
-  if (!userId) {
-    alert("Please enter User ID!");
-    return;
-  }
-  
-  try {
-    if (socket) {
-      socket.disconnect();
-    }
-
-    const serverUrl = getServerUrl();
-    socket = io(serverUrl, {
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      timeout: 20000,
-      forceNew: true
-    });
-
-    socket.on("connect", () => {
-      log(`✅ Connected to server with socket ID: ${socket.id}`);
-      updateStatus("✅ Connected to server", "connected");
-      
-      // Register user for direct calling
-      socket.emit("register-user", userId);
-      log(`👤 Registered as user: ${userId}`);
-      
-      setupSocketEventListeners();
-    });
-
-    socket.on("connect_error", (error) => {
-      console.error("❌ Connection error:", error);
-      updateStatus("❌ Connection failed - Check server", "error");
-    });
-
-    socket.on("disconnect", (reason) => {
-      console.log("❌ Disconnected from server:", reason);
-      updateStatus("❌ Disconnected", "error");
-    });
-
-  } catch (error) {
-    log(`❌ Direct connection error: ${error.message}`);
-    updateStatus("❌ Connection failed", "error");
-  }
-}
-
-function startRoomCall() {
-  if (!permissionGranted || !localStream) {
-    alert("Please test camera permission first!");
-    return;
-  }
-  
-  if (!currentRoomId) {
-    alert("No active room!");
-    return;
-  }
-  
-  // Notify room that user is ready for video
-  socket.emit("room-ready-for-call", { roomId: currentRoomId });
-  updateStatus("📹 Ready for video calls in room", "connected");
-  log("User is ready for video calls in room");
-}
-
-function copyLink() {
-  const link = document.getElementById("roomLink").textContent;
-  navigator.clipboard.writeText(link).then(() => {
-    alert("Link copied to clipboard!");
-  }).catch(() => {
-    // Fallback for older browsers
-    const textArea = document.createElement("textarea");
-    textArea.value = link;
-    document.body.appendChild(textArea);
-    textArea.select();
-    document.execCommand('copy');
-    document.body.removeChild(textArea);
-    alert("Link copied to clipboard!");
-  });
-}
-
-// Check URL for room parameter on page load
-function checkUrlForRoom() {
-  const urlParams = new URLSearchParams(window.location.search);
-  const roomId = urlParams.get('room');
-  
-  if (roomId) {
-    // Auto-switch to room mode and pre-fill room ID
-    switchMode('room');
-    document.getElementById("roomIdInput").value = roomId;
-    updateStatus(`Room link detected: ${roomId}`, "warning");
-    log(`Room link detected in URL: ${roomId}`);
-    
-    // Focus on name input
-    document.getElementById("userName").focus();
-  }
-}
-
-// Setup socket event listeners
-function setupSocketEventListeners() {
-  // Room events
-  socket.on("room-joined", ({ roomId, participants }) => {
-    log(`✅ Successfully joined room: ${roomId}`);
-    updateStatus(`✅ In room: ${roomId} (${participants.length} participants)`, "connected");
-    
-    roomParticipants = participants;
-    updateParticipantList();
-    
-    const roomLink = `${window.location.protocol}//${window.location.host}${window.location.pathname}?room=${roomId}`;
-    document.getElementById("roomLink").textContent = roomLink;
-    document.getElementById("linkDisplay").classList.add("show");
-  });
-  
-  socket.on("participant-joined", ({ participant, participants }) => {
-    log(`👥 ${participant.userName} joined the room`);
-    roomParticipants = participants;
-    updateParticipantList();
-  });
-  
-  socket.on("participant-left", ({ participant, participants }) => {
-    log(`👥 ${participant.userName} left the room`);
-    roomParticipants = participants;
-    updateParticipantList();
-  });
-  
-  socket.on("room-call-request", async ({ from, fromName, roomId }) => {
-    log(`📞 Video call request from ${fromName} in room`);
-    
-    currentCallId = `room_call_${Date.now()}`;
-    targetUserId = from;
-    isCallInitiator = false;
-
-    const callInfo = document.getElementById("callIdHolder");
-    callInfo.innerHTML = `
-      📞 <strong>Video call from: ${fromName}</strong><br>
-      🏠 Room: ${roomId}<br>
-      🎥 Your camera will be available when you accept
-      <div style="margin-top: 15px;">
-        <button class="btn btn-success" onclick="acceptCall()">✅ Accept</button>
-        <button class="btn btn-danger" onclick="rejectCall()">❌ Reject</button>
-      </div>
-    `;
-    callInfo.style.display = "block";
-    
-    updateStatus(`📞 Incoming video call from ${fromName}`, "warning");
-  });
-
-  // Direct call events
-  socket.on("call:incoming", async ({ callerId, callType, callId, socketId }) => {
-    currentCallId = callId;
-    targetUserId = callerId;
-    isCallInitiator = false;
-
-    log(`📞 Incoming ${callType} call from ${callerId}`);
-    updateStatus(`📞 Incoming call from ${callerId}`, "warning");
-
-    const callInfo = document.getElementById("callIdHolder");
-    callInfo.innerHTML = `
-      📞 <strong>Incoming call from: ${callerId}</strong><br>
-      🎥 Your camera will be available when you accept
-      <div style="margin-top: 15px;">
-        <button class="btn btn-success" onclick="acceptCall()">✅ Accept</button>
-        <button class="btn btn-danger" onclick="rejectCall()">❌ Reject</button>
-      </div>
-    `;
-    callInfo.style.display = "block";
-  });
-
-  // WebRTC signaling events
-  socket.on("offer", async ({ offer, from }) => {
-    log(`📡 Received offer from: ${from}`);
-    await handleOffer(offer, from);
-  });
-
-  socket.on("answer", async ({ answer, from }) => {
-    log(`📡 Received answer from: ${from}`);
-    await handleAnswer(answer);
-  });
-
-  socket.on("ice-candidate", async ({ candidate, from }) => {
-    log(`🧊 Received ICE candidate from: ${from}`);
-    await handleIceCandidate(candidate);
-  });
-
-  socket.on("media-state", ({ from, video, audio }) => {
-    log(`📡 Received media state from ${from}: video=${video}, audio=${audio}`);
-    updateRemoteMediaState(video, audio);
-  });
-
-  // Chat events
-  socket.on("chat:message", ({ from, message, timestamp }) => {
-    log(`💬 Chat message received from ${from}: ${message}`);
-    appendChatMessage(`${from}: ${message}`, "remote");
-  });
-
-  socket.on("chat:room-message", ({ from, fromName, message, roomId, timestamp }) => {
-    log(`💬 Room message from ${fromName}: ${message}`);
-    appendChatMessage(`${fromName}: ${message}`, "remote");
-  });
-
-  socket.on("chat:message-sent", ({ to, message, timestamp }) => {
-    log(`✅ Message delivered to ${to}`);
-  });
-
-  socket.on("chat:delivery-failed", ({ to, message, originalMessage }) => {
-    log(`❌ Message delivery failed to ${to}: ${message}`);
-    appendChatMessage(`⚠️ Message not delivered: ${message}`, "error");
-  });
-
-  // Call status events
-  socket.on("call:accepted", ({ callId }) => {
-    log("✅ Call accepted by remote user");
-    updateStatus("✅ Call Active - Connecting streams...", "connected");
-    startAutoEndTimer();
-  });
-
-  socket.on("call:rejected", ({ callId }) => {
-    log("❌ Call rejected by remote user");
-    updateStatus("❌ Call Rejected", "error");
-    resetCall();
-  });
-
-  socket.on("call:cancelled", ({ callId }) => {
-    log("🛑 Call cancelled");
-    updateStatus("🛑 Call Cancelled", "warning");
-    resetCall();
-  });
-
-  socket.on("call:ended", ({ callId, duration, status }) => {
-    log(`📴 Call ended - Duration: ${duration}s`);
-    updateStatus("📴 Call Ended", "");
-    resetCall();
-  });
-
-  socket.on("call:busy", ({ message }) => {
-    log(`📞 Call failed: ${message}`);
-    updateStatus(`📞 ${message}`, "error");
-    resetCall();
-  });
-
-  // User registration events
-  socket.on("user:registered", ({ userId }) => {
-    log(`✅ Successfully registered as user: ${userId}`);
-    updateStatus(`✅ Registered as: ${userId}`, "connected");
-  });
-
-  socket.on("user:registration-failed", ({ error }) => {
-    log(`❌ Registration failed: ${error}`);
-    updateStatus("❌ Registration failed", "error");
-  });
-
-  socket.on("disconnect", () => {
-    log("❌ Disconnected from server");
-    updateStatus("❌ Disconnected", "error");
-  });
-}
-
-function updateParticipantList() {
-  const container = document.getElementById("participantInfo");
-  const list = document.getElementById("participantList");
-  
-  if (roomParticipants.length > 0) {
-    container.style.display = "block";
-    list.innerHTML = roomParticipants.map(p => 
-      `<span style="display: inline-block; background: #e3f2fd; padding: 5px 10px; margin: 2px; border-radius: 15px;">
-        ${p.userName} ${p.socketId === socket.id ? '(You)' : ''}
-      </span>`
-    ).join('');
-  } else {
-    container.style.display = "none";
-  }
-}
-
-// Media control functions
-function toggleLocalVideo() {
-  if (!localStream) {
-    alert("Please start camera first!");
-    return;
-  }
-
-  try {
-    const videoTrack = localStream.getVideoTracks()[0];
-    if (videoTrack) {
-      localVideoEnabled = !localVideoEnabled;
-      videoTrack.enabled = localVideoEnabled;
-
-      const btn = document.getElementById("localVideoBtn");
-      const overlay = document.getElementById("localVideoOff");
-
-      if (localVideoEnabled) {
-        btn.className = "control-btn video-on";
-        btn.innerHTML = "📹";
-        overlay.style.display = "none";
-        updateLocalStatus("Camera on");
-      } else {
-        btn.className = "control-btn video-off";
-        btn.innerHTML = "📹";
-        overlay.style.display = "flex";
-        updateLocalStatus("Camera off");
-      }
-
-      // Send media state to remote peer
-      if (socket && targetUserId) {
-        socket.emit("media-state", {
-          to: targetUserId,
-          video: localVideoEnabled,
-          audio: localAudioEnabled
-        });
-      }
-
-      log(`📹 Local video ${localVideoEnabled ? 'enabled' : 'disabled'}`);
-    }
-  } catch (error) {
-    log(`❌ Error toggling video: ${error.message}`);
-  }
-}
-
-function toggleLocalAudio() {
-  if (!localStream) {
-    alert("Please start camera first!");
-    return;
-  }
-
-  try {
-    const audioTrack = localStream.getAudioTracks()[0];
-    if (audioTrack) {
-      localAudioEnabled = !localAudioEnabled;
-      audioTrack.enabled = localAudioEnabled;
-
-      const btn = document.getElementById("localAudioBtn");
-
-      if (localAudioEnabled) {
-        btn.className = "control-btn audio-on";
-        btn.innerHTML = "🎤";
-        updateLocalStatus("Microphone on");
-      } else {
-        btn.className = "control-btn audio-off";
-        btn.innerHTML = "🎤";
-        updateLocalStatus("Microphone off");
-      }
-
-      // Send media state to remote peer
-      if (socket && targetUserId) {
-        socket.emit("media-state", {
-          to: targetUserId,
-          video: localVideoEnabled,
-          audio: localAudioEnabled
-        });
-      }
-
-      log(`🎤 Local audio ${localAudioEnabled ? 'enabled' : 'disabled'}`);
-    }
-  } catch (error) {
-    log(`❌ Error toggling audio: ${error.message}`);
-  }
-}
-
-function updateRemoteMediaState(video, audio) {
-  remoteVideoEnabled = video;
-  remoteAudioEnabled = audio;
-
-  const remoteVideoOff = document.getElementById("remoteVideoOff");
-  const remoteAudioBtn = document.getElementById("remoteAudioBtn");
-
-  if (video) {
-    remoteVideoOff.style.display = "none";
-    updateRemoteStatus("Remote camera on");
-  } else {
-    remoteVideoOff.style.display = "flex";
-    updateRemoteStatus("Remote camera off");
-  }
-
-  if (audio) {
-    remoteAudioBtn.className = "control-btn audio-on";
-    remoteAudioBtn.innerHTML = "🔊";
-  } else {
-    remoteAudioBtn.className = "control-btn audio-off";
-    remoteAudioBtn.innerHTML = "🔇";
-  }
-}
-
-// Camera and media functions
-async function testCameraPermission() {
-  try {
-    updatePermissionStatus("🎥 Testing camera permission...", false);
-    log("🎥 Testing camera access...");
-
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-      localStream = null;
-    }
-
-    localStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: 640, max: 1280 },
-        height: { ideal: 480, max: 720 },
-        facingMode: 'user'
-      },
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true
-      }
-    });
-
-    const localVideo = document.getElementById("localVideo");
-    localVideo.srcObject = localStream;
-
-    // Initially turn off video and audio
-    localVideoEnabled = false;
-    localAudioEnabled = false;
-
-    const videoTrack = localStream.getVideoTracks()[0];
-    const audioTrack = localStream.getAudioTracks()[0];
-
-    if (videoTrack) videoTrack.enabled = false;
-    if (audioTrack) audioTrack.enabled = false;
-
-    // Update UI to show off state
-    document.getElementById("localVideoBtn").className = "control-btn video-off";
-    document.getElementById("localAudioBtn").className = "control-btn audio-off";
-    document.getElementById("localVideoOff").style.display = "flex";
-
-    updateLocalStatus("Camera & mic ready (off)");
-    updatePermissionStatus("✅ Camera & Microphone permissions granted! Ready for calls.", true);
-
-    permissionGranted = true;
-    log(`✅ Camera permission granted - ${localStream.getTracks().length} tracks available (initially off)`);
-
-  } catch (error) {
-    log(`❌ Camera permission error: ${error.message}`);
-    updatePermissionStatus("❌ Camera permission denied. Please allow camera access!", false);
-    updateLocalStatus("Permission denied");
-    alert(`Camera access failed: ${error.message}\n\nPlease:\n1. Allow camera permission\n2. Refresh page if needed`);
-    permissionGranted = false;
-  }
-}
-
-// WebRTC functions
-async function createPeerConnection() {
-  try {
-    peerConnection = new RTCPeerConnection(config);
-    log("🔗 Created new peer connection");
-
-    // Add local stream to peer connection
-    if (localStream) {
-      localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-        log(`➕ Added local track: ${track.kind}`);
-      });
-    }
-
-    // Handle remote stream
-    peerConnection.ontrack = (event) => {
-      log(`📡 Received remote track: ${event.track.kind}`);
-      const remoteVideo = document.getElementById("remoteVideo");
-      remoteVideo.srcObject = event.streams[0];
-      updateStatus("📹 Remote video connected", "connected");
+    <div class="controls">
+      <button onclick="toggleAudio()">Mute/Unmute</button>
+      <button onclick="toggleVideo()">Camera On/Off</button>
+      <button onclick="startScreenShare()">Share Screen</button>
+    </div>
+
+    <section id="chatSection">
+      <div id="chatBox"></div>
+      <input
+        id="chatInput"
+        placeholder="Type a message and press Enter..."
+        autocomplete="off"
+        onkeydown="if(event.key==='Enter') sendMessage(this.value)"
+      />
+    </section>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const room = "{{room}}";
+
+    const socket = io();
+    const localVideo = document.getElementById('localVideo');
+    const remoteVideo = document.getElementById('remoteVideo');
+    const chatBox = document.getElementById('chatBox');
+    let localStream;
+    let remoteStream;
+    let peerConnection;
+    let startTime;
+
+    const config = {
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     };
 
-    // Handle ICE candidates
-    peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
-        log("🧊 Sending ICE candidate");
-        socket.emit("ice-candidate", {
-          candidate: event.candidate,
-          to: targetUserId
-        });
-      }
-    };
-
-    // Handle connection state changes
-    peerConnection.onconnectionstatechange = () => {
-      log(`🔗 Connection state: ${peerConnection.connectionState}`);
-      if (peerConnection.connectionState === 'connected') {
-        updateStatus("📹 Video call connected", "connected");
-      } else if (peerConnection.connectionState === 'failed') {
-        updateStatus("❌ Connection failed", "error");
-        resetCall();
-      }
-    };
-
-    // Process queued ICE candidates
-    while (iceCandidateQueue.length > 0) {
-      const candidate = iceCandidateQueue.shift();
+    (async function init() {
       try {
-        await peerConnection.addIceCandidate(candidate);
-        log("🧊 Added queued ICE candidate");
-      } catch (error) {
-        log(`❌ Error adding queued ICE candidate: ${error.message}`);
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localVideo.srcObject = localStream;
+
+        socket.emit('join', room);
+      } catch (err) {
+        alert('Could not access camera/microphone: ' + err.message);
+      }
+    })();
+
+    socket.on('user-joined', async () => {
+      createConnection();
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      socket.emit('offer', { room, offer });
+      startTimer();
+    });
+
+    socket.on('offer', async (offer) => {
+      createConnection();
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      socket.emit('answer', { room, answer });
+      startTimer();
+    });
+
+    socket.on('answer', async (answer) => {
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+    });
+
+    socket.on('ice-candidate', (candidate) => {
+      peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+
+    socket.on('chat-message', ({ msg }) => {
+      chatBox.innerHTML += `<div>${msg}</div>`;
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
+
+    function createConnection() {
+      peerConnection = new RTCPeerConnection(config);
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) {
+          socket.emit('ice-candidate', { room, candidate: event.candidate });
+        }
+      };
+
+      peerConnection.ontrack = event => {
+        if (!remoteStream) {
+          remoteStream = new MediaStream();
+          remoteVideo.srcObject = remoteStream;
+        }
+        remoteStream.addTrack(event.track);
+      };
+
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    }
+
+    function toggleAudio() {
+      const enabled = localStream.getAudioTracks()[0].enabled;
+      localStream.getAudioTracks()[0].enabled = !enabled;
+    }
+
+    function toggleVideo() {
+      const enabled = localStream.getVideoTracks()[0].enabled;
+      localStream.getVideoTracks()[0].enabled = !enabled;
+    }
+
+    async function startScreenShare() {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenTrack = screenStream.getVideoTracks()[0];
+        const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+        sender.replaceTrack(screenTrack);
+
+        screenTrack.onended = () => {
+          sender.replaceTrack(localStream.getVideoTracks()[0]);
+        };
+      } catch (err) {
+        alert('Screen share failed or was cancelled.');
       }
     }
 
-  } catch (error) {
-    log(`❌ Failed to create peer connection: ${error.message}`);
-    updateStatus("❌ Connection setup failed", "error");
-    throw error;
-  }
-}
-
-async function handleOffer(offer, from) {
-  try {
-    targetUserId = from;
-    await createPeerConnection();
-    
-    await peerConnection.setRemoteDescription(offer);
-    log("📡 Set remote description from offer");
-    
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-    log("📡 Created and set local description (answer)");
-    
-    socket.emit("answer", { answer, to: from });
-    log("📡 Sent answer");
-    
-  } catch (error) {
-    log(`❌ Error handling offer: ${error.message}`);
-    updateStatus("❌ Failed to handle call offer", "error");
-  }
-}
-
-async function handleAnswer(answer) {
-  try {
-    await peerConnection.setRemoteDescription(answer);
-    log("📡 Set remote description from answer");
-  } catch (error) {
-    log(`❌ Error handling answer: ${error.message}`);
-    updateStatus("❌ Failed to handle call answer", "error");
-  }
-}
-
-async function handleIceCandidate(candidate) {
-  try {
-    if (peerConnection && peerConnection.remoteDescription) {
-      await peerConnection.addIceCandidate(candidate);
-      log("🧊 Added ICE candidate");
-    } else {
-      iceCandidateQueue.push(candidate);
-      log("🧊 Queued ICE candidate");
+    function sendMessage(msg) {
+      if (!msg.trim()) return;
+      socket.emit('chat-message', { room, msg });
+      chatBox.innerHTML += `<div style="text-align:right; color:#7fbf7f;">You: ${msg}</div>`;
+      chatBox.scrollTop = chatBox.scrollHeight;
+      document.getElementById('chatInput').value = '';
     }
-  } catch (error) {
-    log(`❌ Error handling ICE candidate: ${error.message}`);
-  }
-}
 
-// Call management functions
-async function makeCall() {
-  const calleeId = document.getElementById("calleeId").value.trim();
-  if (!calleeId) {
-    alert("Please enter a User ID to call!");
-    return;
-  }
-
-  if (!permissionGranted || !localStream) {
-    alert("Please test camera permission first!");
-    return;
-  }
-
-  try {
-    targetUserId = calleeId;
-    currentCallId = `call_${Date.now()}`;
-    isCallInitiator = true;
-
-    await createPeerConnection();
-    
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    log("📡 Created and set local description (offer)");
-
-    socket.emit("call:initiate", {
-      to: calleeId,
-      callType: "video",
-      callId: currentCallId
-    });
-
-    socket.emit("offer", { offer, to: calleeId });
-    log(`📞 Initiated call to ${calleeId}`);
-    
-    updateStatus(`📞 Calling ${calleeId}...`, "warning");
-    
-  } catch (error) {
-    log(`❌ Error making call: ${error.message}`);
-    updateStatus("❌ Call failed", "error");
-    resetCall();
-  }
-}
-
-async function acceptCall() {
-  if (!permissionGranted || !localStream) {
-    alert("Please test camera permission first!");
-    return;
-  }
-
-  try {
-    socket.emit("call:accept", { callId: currentCallId });
-    log("✅ Call accepted");
-    
-    document.getElementById("callIdHolder").style.display = "none";
-    updateStatus("✅ Call accepted - Connecting...", "connected");
-    
-    startAutoEndTimer();
-    
-  } catch (error) {
-    log(`❌ Error accepting call: ${error.message}`);
-    updateStatus("❌ Failed to accept call", "error");
-  }
-}
-
-function rejectCall() {
-  try {
-    socket.emit("call:reject", { callId: currentCallId });
-    log("❌ Call rejected");
-    resetCall();
-  } catch (error) {
-    log(`❌ Error rejecting call: ${error.message}`);
-    resetCall();
-  }
-}
-
-function cancelCall() {
-  if (currentCallId) {
-    try {
-      socket.emit("call:cancel", { callId: currentCallId });
-      log("🛑 Call cancelled");
-      resetCall();
-    } catch (error) {
-      log(`❌ Error cancelling call: ${error.message}`);
-      resetCall();
+    function startTimer() {
+      startTime = Date.now();
+      setInterval(() => {
+        const diff = Date.now() - startTime;
+        const mins = Math.floor(diff / 60000);
+        const secs = Math.floor((diff % 60000) / 1000);
+        document.getElementById('callTimer').innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
+      }, 1000);
     }
-  }
-}
-
-function endCall() {
-  if (currentCallId) {
-    try {
-      socket.emit("call:end", { callId: currentCallId });
-      log("📴 Call ended by user");
-      resetCall();
-    } catch (error) {
-      log(`❌ Error ending call: ${error.message}`);
-      resetCall();
-    }
-  }
-}
-
-function resetCall() {
-  // Clear call state
-  currentCallId = null;
-  targetUserId = null;
-  isCallInitiator = false;
-  
-  // Close peer connection
-  if (peerConnection) {
-    peerConnection.close();
-    peerConnection = null;
-  }
-  
-  // Clear ICE candidate queue
-  iceCandidateQueue = [];
-  
-  // Clear remote video
-  const remoteVideo = document.getElementById("remoteVideo");
-  remoteVideo.srcObject = null;
-  
-  // Hide call info
-  document.getElementById("callIdHolder").style.display = "none";
-  
-  // Clear timers
-  if (callTimer) {
-    clearInterval(callTimer);
-    callTimer = null;
-  }
-  
-  // Reset UI
-  updateRemoteStatus("No remote connection");
-  document.getElementById("remoteVideoOff").style.display = "flex";
-  
-  log("🔄 Call state reset");
-  updateStatus("Ready for calls", "");
-}
-
-// Timer functions
-function startAutoEndTimer() {
-  let seconds = 0;
-  callTimer = setInterval(() => {
-    seconds++;
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    updateStatus(`📹 Call active: ${minutes}:${remainingSeconds.toString().padStart(2, '0')}`, "connected");
-  }, 1000);
-}
-
-// Chat functions
-function sendMessage() {
-  const messageInput = document.getElementById("messageInput");
-  const message = messageInput.value.trim();
-  
-  if (!message) return;
-  
-  try {
-    if (currentMode === 'room' && currentRoomId) {
-      socket.emit("chat:room-message", {
-        roomId: currentRoomId,
-        message: message
-      });
-      appendChatMessage(`You: ${message}`, "local");
-    } else if (targetUserId) {
-      socket.emit("chat:message", {
-        to: targetUserId,
-        message: message
-      });
-      appendChatMessage(`You: ${message}`, "local");
-    } else {
-      alert("No active call or room to send message to!");
-      return;
-    }
-    
-    messageInput.value = "";
-    log(`💬 Message sent: ${message}`);
-  } catch (error) {
-    log(`❌ Error sending message: ${error.message}`);
-  }
-}
-
-function appendChatMessage(message, type) {
-  const chatMessages = document.getElementById("chatMessages");
-  const messageEl = document.createElement("div");
-  messageEl.className = `chat-message ${type}`;
-  messageEl.textContent = message;
-  chatMessages.appendChild(messageEl);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-
-    </script>
-  </body>
-
+  </script>
+</body>
 </html>
