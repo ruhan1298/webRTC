@@ -1,284 +1,165 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Call Room</title>
   <style>
-    body {
-      margin: 0;
-      font-family: 'Segoe UI', sans-serif;
-      background: #121212;
-      color: #e0e0e0;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
-    header {
-      background: #1f1f1f;
-      padding: 15px 30px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    main {
-      flex: 1;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-    }
-    .videos {
-      display: flex;
-      gap: 15px;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
     video {
       width: 45%;
-      max-height: 400px;
-      background: black;
-      border: 2px solid #3a8ee6;
-      border-radius: 10px;
-    }
-    .controls {
-      display: flex;
-      justify-content: center;
-      gap: 10px;
-    }
-    .controls button {
-      padding: 10px 15px;
-      background: #3a8ee6;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 1rem;
-      cursor: pointer;
-    }
-    .controls .end {
-      background: red;
-    }
-    #chatSection {
-      max-width: 600px;
-      margin: 0 auto;
-      background: #222;
-      padding: 10px;
-      border-radius: 10px;
-      height: 200px;
-      display: flex;
-      flex-direction: column;
+      margin: 5px;
+      border: 2px solid #000;
     }
     #chatBox {
-      flex: 1;
+      height: 150px;
       overflow-y: auto;
-      margin-bottom: 10px;
-    }
-    #chatInput {
-      padding: 10px;
-      border-radius: 5px;
-      border: none;
-      background: #333;
-      color: white;
+      border: 1px solid #000;
+      padding: 5px;
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
-  <header>
-    <div>Room: <span id="roomDisplay"></span></div>
-    <div id="callTimer">00:00</div>
-  </header>
-  <main>
-    <div class="videos" id="videos">
-      <video id="localVideo" autoplay muted playsinline></video>
-    </div>
-    <div class="controls">
-      <button onclick="toggleAudio()">Mute/Unmute</button>
-      <button onclick="toggleVideo()">Camera On/Off</button>
-      <button onclick="startScreenShare()">Share Screen</button>
-      <button class="end" onclick="endCall()">End Call</button>
-    </div>
-    <div id="chatSection">
-      <div id="chatBox"></div>
-      <input id="chatInput" placeholder="Type and press Enter" onkeydown="if(event.key==='Enter') sendMessage(this.value)" />
-    </div>
-  </main>
+  <h3>Room ID: {{room}}</h3>
+  <div id="callTimer">00:00</div>
+  <video id="localVideo" autoplay muted playsinline></video>
+  <video id="remoteVideo" autoplay playsinline></video>
+  <br/>
+  <button onclick="toggleAudio()">Mute/Unmute</button>
+  <button onclick="toggleVideo()">Camera On/Off</button>
+  <button onclick="startScreenShare()">Share Screen</button>
+        <button class="end" onclick="endCall()">End Call</button>
+
+
+  <div id="chatBox"></div>
+  <input id="chatInput" placeholder="Type a message..." onkeydown="if(event.key==='Enter') sendMessage(this.value)" />
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    const socket = io();
-    const urlParams = new URLSearchParams(window.location.search);
-    const room = urlParams.get('room') || 'default';
-    document.getElementById('roomDisplay').innerText = room;
+    const room = "{{room}}";
+    // public/script.js
+const socket = io();
+const localVideo = document.getElementById('localVideo');
+const remoteVideo = document.getElementById('remoteVideo');
+const chatBox = document.getElementById('chatBox');
+let localStream;
+let remoteStream;
+let peerConnection;
+let startTime;
 
-    const localVideo = document.getElementById('localVideo');
-    const videoContainer = document.getElementById('videos');
-    const chatBox = document.getElementById('chatBox');
-    const chatInput = document.getElementById('chatInput');
+const config = {
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+};
 
-    let localStream;
-    let peerConnections = {};
-    let userId;
-    let startTime;
-    let timerStarted = false;
+(async function init() {
+  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  localVideo.srcObject = localStream;
 
-    const config = {
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-    };
+  socket.emit('join', room);
+})();
 
-    (async function init() {
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
+socket.on('user-joined', async (id) => {
+  createConnection();
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+  socket.emit('offer', { room, offer });
+  startTimer();
+});
 
-        socket.on('connect', () => {
-          userId = socket.id;
-          socket.emit('join', room);
-        });
-      } catch (err) {
-        alert('Camera/mic access denied');
-      }
-    })();
+socket.on('offer', async (offer, id) => {
+  createConnection();
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+  socket.emit('answer', { room, answer });
+  startTimer();
+});
 
-    socket.on('user-joined', async (id) => {
-      if (id === userId) return;
-      const pc = createConnection(id);
-      peerConnections[id] = pc;
+socket.on('answer', async (answer, id) => {
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+});
 
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      socket.emit('offer', { room, offer, to: id });
+socket.on('ice-candidate', (candidate, id) => {
+  peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+});
 
-      startTimer();
-    });
+socket.on('chat-message', ({ msg }) => {
+  chatBox.innerHTML += `<div>${msg}</div>`;
+});
 
-    socket.on('offer', async ({ offer, from }) => {
-      const pc = createConnection(from);
-      peerConnections[from] = pc;
+function createConnection() {
+  peerConnection = new RTCPeerConnection(config);
 
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit('answer', { room, answer, to: from });
-
-      startTimer();
-    });
-
-    socket.on('answer', async ({ answer, from }) => {
-      await peerConnections[from].setRemoteDescription(new RTCSessionDescription(answer));
-    });
-
-    socket.on('ice-candidate', ({ candidate, from }) => {
-      if (peerConnections[from]) {
-        peerConnections[from].addIceCandidate(new RTCIceCandidate(candidate));
-      }
-    });
-
-    socket.on('chat-message', ({ msg }) => {
-      chatBox.innerHTML += `<div>${msg}</div>`;
-      chatBox.scrollTop = chatBox.scrollHeight;
-    });
-
-    socket.on('user-disconnected', (id) => {
-      if (peerConnections[id]) {
-        peerConnections[id].close();
-        delete peerConnections[id];
-        const video = document.getElementById(`remote-${id}`);
-        if (video) video.remove();
-      }
-    });
-
-    function createConnection(peerId) {
-      const pc = new RTCPeerConnection(config);
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('ice-candidate', { room, candidate: event.candidate, to: peerId });
-        }
-      };
-
-      pc.ontrack = (event) => {
-        let video = document.getElementById(`remote-${peerId}`);
-        if (!video) {
-          video = document.createElement('video');
-          video.id = `remote-${peerId}`;
-          video.autoplay = true;
-          video.playsInline = true;
-          videoContainer.appendChild(video);
-        }
-
-        if (!video.srcObject) {
-          video.srcObject = new MediaStream();
-        }
-
-        const stream = video.srcObject;
-        const alreadyAdded = stream.getTracks().some(t => t.id === event.track.id);
-        if (!alreadyAdded) {
-          stream.addTrack(event.track);
-        }
-      };
-
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-      return pc;
+  peerConnection.onicecandidate = event => {
+    if (event.candidate) {
+      socket.emit('ice-candidate', { room, candidate: event.candidate });
     }
+  };
 
-    function toggleAudio() {
-      const audioTrack = localStream.getAudioTracks()[0];
-      if (audioTrack) audioTrack.enabled = !audioTrack.enabled;
+  peerConnection.ontrack = event => {
+    if (!remoteStream) {
+      remoteStream = new MediaStream();
+      remoteVideo.srcObject = remoteStream;
     }
+    remoteStream.addTrack(event.track);
+  };
 
-    function toggleVideo() {
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) videoTrack.enabled = !videoTrack.enabled;
-    }
+  localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+}
 
-    async function startScreenShare() {
-      try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        const screenTrack = screenStream.getVideoTracks()[0];
+function toggleAudio() {
+  const enabled = localStream.getAudioTracks()[0].enabled;
+  localStream.getAudioTracks()[0].enabled = !enabled;
+}
 
-        Object.values(peerConnections).forEach(pc => {
-          const sender = pc.getSenders().find(s => s.track.kind === 'video');
-          if (sender) sender.replaceTrack(screenTrack);
-        });
+function toggleVideo() {
+  const enabled = localStream.getVideoTracks()[0].enabled;
+  localStream.getVideoTracks()[0].enabled = !enabled;
+}
 
-        screenTrack.onended = () => {
-          Object.values(peerConnections).forEach(pc => {
-            const sender = pc.getSenders().find(s => s.track.kind === 'video');
-            if (sender) sender.replaceTrack(localStream.getVideoTracks()[0]);
-          });
-        };
-      } catch (err) {
-        alert('Screen sharing cancelled');
-      }
-    }
+async function startScreenShare() {
+  const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+  const screenTrack = screenStream.getVideoTracks()[0];
+  const sender = peerConnection.getSenders().find(s => s.track.kind === 'video');
+  sender.replaceTrack(screenTrack);
 
-    function sendMessage(msg) {
-      if (!msg.trim()) return;
-      const formatted = `<div style="text-align:right;"><span style="color:#7fbf7f;">You:</span> ${msg}</div>`;
-      socket.emit('chat-message', { room, msg: formatted });
-      chatBox.innerHTML += formatted;
-      chatBox.scrollTop = chatBox.scrollHeight;
-      chatInput.value = '';
-    }
+  screenTrack.onended = () => {
+    sender.replaceTrack(localStream.getVideoTracks()[0]);
+  };
+}
 
-    function startTimer() {
-      if (timerStarted) return;
-      timerStarted = true;
-      startTime = Date.now();
-      setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        const mins = Math.floor(elapsed / 60000);
-        const secs = Math.floor((elapsed % 60000) / 1000);
-        document.getElementById('callTimer').innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
-      }, 1000);
-    }
+function sendMessage(msg) {
+  socket.emit('chat-message', { room, msg });
+  chatBox.innerHTML += `<div style="text-align:right">You: ${msg}</div>`;
+  document.getElementById('chatInput').value = '';
+}
 
-    function endCall() {
-      Object.values(peerConnections).forEach(pc => pc.close());
-      socket.disconnect();
-      alert('Call ended');
-      window.location.href = '/room/link';
-    }
+function startTimer() {
+  startTime = Date.now();
+  setInterval(() => {
+    const diff = Date.now() - startTime;
+    const mins = Math.floor(diff / 60000);
+    const secs = Math.floor((diff % 60000) / 1000);
+    document.getElementById('callTimer').innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, 1000);
+}
+function endCall() {
+  if (peerConnection) {
+    peerConnection.close();
+    peerConnection = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+  if (remoteStream) {
+    remoteStream.getTracks().forEach(track => track.stop());
+    remoteStream = null;
+  }
+  socket.emit('leave', room);
+  window.location.href = '/room/calling';
+}
+
+
   </script>
+  <script src="/script.js"></script>
 </body>
 </html>
