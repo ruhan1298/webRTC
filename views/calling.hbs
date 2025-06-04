@@ -22,7 +22,6 @@
       align-items: center;
       font-weight: 700;
       font-size: 1.2rem;
-      letter-spacing: 1px;
     }
     #callTimer {
       font-family: 'Courier New', Courier, monospace;
@@ -30,113 +29,88 @@
       background: #292929;
       padding: 8px 15px;
       border-radius: 8px;
-      letter-spacing: 1.2px;
     }
     main {
       flex: 1;
       display: flex;
       flex-direction: column;
-      padding: 20px 30px;
+      padding: 20px;
       gap: 15px;
-      background: #181818;
     }
     .videos {
-      flex: 1;
       display: flex;
       gap: 20px;
+      flex-wrap: wrap;
       justify-content: center;
       align-items: center;
-      flex-wrap: wrap;
     }
     video {
-      background: #000;
-      border-radius: 12px;
-      box-shadow: 0 0 12px rgba(0,0,0,0.8);
       width: 45%;
       max-height: 400px;
-      object-fit: cover;
+      background: #000;
+      border-radius: 10px;
       border: 3px solid #3a8ee6;
+      object-fit: cover;
     }
     .controls {
       display: flex;
       justify-content: center;
-      gap: 20px;
+      flex-wrap: wrap;
+      gap: 15px;
       margin-top: 10px;
     }
     .controls button {
       background: #3a8ee6;
-      border: none;
       color: white;
-      font-size: 1rem;
-      padding: 12px 24px;
-      border-radius: 10px;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
       cursor: pointer;
-      transition: background 0.3s ease;
-      min-width: 140px;
+      font-size: 1rem;
     }
     .controls button:hover {
       background: #2a70c4;
     }
+    .controls .end {
+      background: #e53935;
+    }
     #chatSection {
+      max-width: 600px;
+      margin: 0 auto;
       background: #222;
-      border-radius: 10px;
       padding: 15px;
+      border-radius: 10px;
       display: flex;
       flex-direction: column;
       height: 250px;
-      max-width: 600px;
-      margin: 0 auto 30px;
     }
     #chatBox {
       flex: 1;
       overflow-y: auto;
-      padding-right: 10px;
-      color: #ddd;
       font-size: 0.95rem;
-      line-height: 1.3rem;
       border-bottom: 1px solid #444;
-    }
-    #chatBox div {
-      margin-bottom: 8px;
-      word-wrap: break-word;
+      margin-bottom: 10px;
     }
     #chatInput {
-      margin-top: 12px;
-      padding: 10px 15px;
-      border-radius: 8px;
+      padding: 10px;
       border: none;
+      border-radius: 8px;
+      background: #333;
+      color: white;
       font-size: 1rem;
       outline: none;
-      width: 100%;
-      background: #333;
-      color: #eee;
-      box-sizing: border-box;
-      transition: background 0.3s ease;
     }
-    #chatInput:focus {
-      background: #3a8ee6;
-      color: white;
-    }
-
-    @media (max-width: 720px) {
+    @media (max-width: 768px) {
       video {
         width: 100%;
         max-height: 250px;
-      }
-      .controls {
-        flex-wrap: wrap;
-        gap: 12px;
-      }
-      #chatSection {
-        max-width: 100%;
-        height: 200px;
       }
     }
   </style>
 </head>
 <body>
   <header>
-    <div>Room ID: <strong>{{room}}</strong></div>
+    <div>Room ID: <strong id="roomDisplay"></strong></div>
     <div id="callTimer">00:00</div>
   </header>
 
@@ -149,7 +123,7 @@
       <button onclick="toggleAudio()">Mute/Unmute</button>
       <button onclick="toggleVideo()">Camera On/Off</button>
       <button onclick="startScreenShare()">Share Screen</button>
-      <button onclick="endCall()" style="background:#e53935;">End Call</button>
+      <button class="end" onclick="endCall()">End Call</button>
     </div>
 
     <section id="chatSection">
@@ -157,7 +131,6 @@
       <input
         id="chatInput"
         placeholder="Type a message and press Enter..."
-        autocomplete="off"
         onkeydown="if(event.key==='Enter') sendMessage(this.value)"
       />
     </section>
@@ -165,17 +138,21 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    const room = "{{room}}";
-    const socket = io();
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room') || 'default-room';
+    document.getElementById('roomDisplay').innerText = room;
 
+    const socket = io();
     const localVideo = document.getElementById('localVideo');
     const videoContainer = document.getElementById('videos');
     const chatBox = document.getElementById('chatBox');
+    const chatInput = document.getElementById('chatInput');
 
     let localStream;
     let peerConnections = {};
     let userId = null;
     let startTime;
+    let timerStarted = false;
 
     const config = {
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -191,7 +168,7 @@
           socket.emit('join', room);
         });
       } catch (err) {
-        alert('Camera/mic error: ' + err.message);
+        alert("Camera/mic access denied");
       }
     })();
 
@@ -204,6 +181,7 @@
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       socket.emit('offer', { room, offer, to: id });
+
       startTimer();
     });
 
@@ -215,6 +193,7 @@
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       socket.emit('answer', { room, answer, to: from });
+
       startTimer();
     });
 
@@ -235,8 +214,8 @@
       if (peerConnections[id]) {
         peerConnections[id].close();
         delete peerConnections[id];
-        const vid = document.getElementById(`remote-${id}`);
-        if (vid) vid.remove();
+        const video = document.getElementById(`remote-${id}`);
+        if (video) video.remove();
       }
     });
 
@@ -257,12 +236,14 @@
           video.autoplay = true;
           video.playsInline = true;
           video.style.width = '45%';
+          video.style.maxHeight = '400px';
+          video.style.borderRadius = '10px';
+          video.style.border = '3px solid #888';
           videoContainer.appendChild(video);
         }
 
-        const remoteStream = new MediaStream();
-        remoteStream.addTrack(event.track);
-        video.srcObject = remoteStream;
+        if (!video.srcObject) video.srcObject = new MediaStream();
+        video.srcObject.addTrack(event.track);
       };
 
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
@@ -296,20 +277,22 @@
           });
         };
       } catch (err) {
-        alert("Screen sharing failed");
+        alert("Screen sharing cancelled or failed.");
       }
     }
 
     function sendMessage(msg) {
       if (!msg.trim()) return;
-      socket.emit('chat-message', { room, msg });
-      chatBox.innerHTML += `<div style="text-align:right; color:#7fbf7f;">You: ${msg}</div>`;
+      const formatted = `<div style="text-align:right;"><span style="color:#7fbf7f;">You:</span> ${msg}</div>`;
+      socket.emit('chat-message', { room, msg: formatted });
+      chatBox.innerHTML += formatted;
       chatBox.scrollTop = chatBox.scrollHeight;
-      document.getElementById('chatInput').value = '';
+      chatInput.value = '';
     }
 
     function startTimer() {
-      if (startTime) return;
+      if (timerStarted) return;
+      timerStarted = true;
       startTime = Date.now();
       setInterval(() => {
         const diff = Date.now() - startTime;
@@ -323,7 +306,8 @@
       Object.values(peerConnections).forEach(pc => pc.close());
       peerConnections = {};
       socket.disconnect();
-      window.location.href = '/'; // or show exit message
+      alert("Call ended.");
+      window.location.href = '/room/link'; // redirect to homepage or call list
     }
   </script>
 </body>
