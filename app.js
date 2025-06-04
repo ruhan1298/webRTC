@@ -83,22 +83,60 @@ const room = require('./model/room');
 const user = require('./model/user');
 // user.sync({force:true})
 // Store room information
+const rooms = {}; // { roomName: Set(socketId) }
+
 io.on('connection', socket => {
+  console.log('User connected:', socket.id);
+
   socket.on('join', room => {
     socket.join(room);
-    socket.to(room).emit('user-joined');
-  });
 
-  socket.on('offer', data => {
-    socket.to(data.room).emit('offer', data.offer);
-  });
+    if (!rooms[room]) rooms[room] = new Set();
+    rooms[room].add(socket.id);
 
-  socket.on('answer', data => {
-    socket.to(data.room).emit('answer', data.answer);
-  });
+    // Send existing users in the room to the new user
+    const otherUsers = Array.from(rooms[room]).filter(id => id !== socket.id);
+    socket.emit('all-users', otherUsers);
 
-  socket.on('ice-candidate', data => {
-    socket.to(data.room).emit('ice-candidate', data.candidate);
+    // Notify others that a new user joined
+    socket.to(room).emit('user-joined', socket.id);
+
+    // Relay offers, answers, and ICE candidates
+    socket.on('offer', ({ to, offer }) => {
+      io.to(to).emit('offer', { from: socket.id, offer });
+    });
+
+    socket.on('answer', ({ to, answer }) => {
+      io.to(to).emit('answer', { from: socket.id, answer });
+    });
+
+    socket.on('ice-candidate', ({ to, candidate }) => {
+      io.to(to).emit('ice-candidate', { from: socket.id, candidate });
+    });
+
+    socket.on('chat-message', ({ room, msg }) => {
+      // Broadcast chat message to the room
+      io.to(room).emit('chat-message', { from: socket.id, msg });
+    });
+
+    socket.on('leave', room => {
+      socket.leave(room);
+      if (rooms[room]) {
+        rooms[room].delete(socket.id);
+        socket.to(room).emit('user-left', socket.id);
+      }
+    });
+
+    socket.on('disconnect', () => {
+      console.log('User disconnected:', socket.id);
+      // Remove from all rooms and notify
+      for (const roomName in rooms) {
+        if (rooms[roomName].has(socket.id)) {
+          rooms[roomName].delete(socket.id);
+          socket.to(roomName).emit('user-left', socket.id);
+        }
+      }
+    });
   });
 });
 // ===================== ROUTES ===================== //
@@ -138,7 +176,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const PORT = 3000;
+const PORT = 3002;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
