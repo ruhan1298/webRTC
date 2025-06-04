@@ -150,6 +150,8 @@
       <button onclick="toggleAudio()">Mute/Unmute</button>
       <button onclick="toggleVideo()">Camera On/Off</button>
       <button onclick="startScreenShare()">Share Screen</button>
+       <button class="end" onclick="endCall()">End Call</button>
+
     </div>
 
     <section id="chatSection">
@@ -282,6 +284,18 @@
         const secs = Math.floor((diff % 60000) / 1000);
         document.getElementById('callTimer').innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
       }, 1000);
+    }
+    function endCall() {
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+      socket.emit('leave', room);
+      window.location.href = '/room/link';
     }
   </script>
 </body>
