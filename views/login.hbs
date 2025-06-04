@@ -1,0 +1,146 @@
+ <div class="auth-page-wrapper auth-bg-cover  d-flex justify-content-center align-items-center min-vh-100">
+        <div class="bg-overlay" style="
+    backdrop-filter: blur(3px);
+"></div>
+        <!-- auth-page content   py-5-->
+        <div class="auth-page-content overflow-hidden pt-lg-5">
+            <div class="container">
+                <div style="
+    display: flex;
+    align-items: center;
+    justify-content: center;
+        padding-bottom: 1rem;
+
+">
+
+                                                   <img src="assets/images/Amin Softtech logo 300px.png" style="
+    width: 25%;
+    aspect-ratio: 3/2;
+    object-fit: contain;
+    
+" alt="">
+                </div>
+                <div class="row " style="
+    align-items: center;
+    justify-content: center;
+">
+                    <div class="col-lg-6">
+                        <div class="card overflow-hidden" style="
+    box-shadow: rgba(0, 0, 0, 0.2) 0px 12px 28px 0px, rgba(0, 0, 0, 0.1) 0px 2px 4px 0px, rgba(255, 255, 255, 0.05) 0px 0px 0px 1px inset;
+">
+                            <div class="row g-0">
+                                <div class="col-lg-12" style="
+    background: white;
+">
+                                    <div class="p-lg-5 p-4">
+                                        <div>
+                                            <div style="
+    display: grid;
+    place-items: center;
+">
+
+         
+                                            </div>
+                                            <h5 class="text-primary" style="
+    text-align: center !important;
+    color: black !important;
+"  >Welcome !</h5>
+                                            <p class="text-muted" style="
+    text-align: center !important;
+    color: black !important;
+" >Sign in to continue to AminSofttech.</p>
+                                     
+                                       
+                                        </div>
+                                                        {{#if error}}
+                                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                        <strong> Oops.....! {{error}}</strong>
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"
+                                            aria-label="Close"></button>
+                                    </div>
+                                    {{/if}}
+
+                                        <div class="mt-4">
+                                            <form action="/auth" method="POST" >
+                                                
+
+                                                <div class="mb-3">
+                                                    <label for="email" class="form-label" style="
+    color: black !important;
+">Email</label>
+                                                    <input type="email" class="form-control"  name="email" placeholder="Enter email">
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    {{!-- <div class="float-end">
+                                                        <a href="auth-pass-reset-cover.html" class="text-muted">Forgot password?</a>
+                                                    </div> --}}
+                                                    <label class="form-label" for="password" style="
+    color: black !important;
+">Password</label>
+                                                    <div class="position-relative auth-pass-inputgroup mb-3">
+                                                        <input type="password" class="form-control pe-5 password-input" placeholder="Enter password" name="password">
+                                                        <button class="btn btn-link position-absolute end-0 top-0 text-decoration-none text-muted password-addon" type="button" id="password-addon"><i class="ri-eye-fill align-middle"></i></button>
+                                                    </div>
+                                                </div>
+
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" value="" id="auth-remember-check">
+                                                    <label class="form-check-label" for="auth-remember-check" style="
+    color: black !important;
+"> Remember me</label>
+                                                </div>
+
+                                                <div class="mt-4">
+                                                    <button class="btn btn-success w-100" type="submit" style="color: white; font-weight: 500; border-radius: 43px;border: none;">Sign In</button>
+                                                </div>
+
+                                                 <div class="mt-4 text-center">
+                                                    {{!-- <div class="signin-other-title">
+                                                        <h5 class="fs-13 mb-4 title">Sign In with</h5>
+                                                    </div> --}}
+
+                                                 
+                                                </div>
+
+                                            </form>
+                                        </div>
+
+                                        {{!-- <div class="mt-5 text-center">
+                                            <p class="mb-0">Don't have an account ? <a href="auth-signup-cover.html" class="fw-semibold text-primary text-decoration-underline"> Signup</a> </p>
+                                        </div> --}}
+                                    </div>
+                                </div>
+                                <!-- end col -->
+                            </div>
+                            <!-- end row -->
+                        </div>
+                        <!-- end card -->
+                    </div>
+                    <!-- end col -->
+
+                </div>
+                <!-- end row -->
+            </div>
+            <!-- end container -->
+        </div>
+        <!-- end auth page content -->
+
+        <!-- footer -->
+        <footer class="footer">
+            <div class="container">
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div class="text-center">
+                            <p class="mb-0" style="
+    {{!-- color: black !important; --}}
+">&copy;
+                                <script>document.write(new Date().getFullYear())</script> Xeneos. Crafted with <i class="mdi mdi-heart text-danger"></i> by AminSofttech
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </footer>
+        <!-- end Footer -->
+    </div>

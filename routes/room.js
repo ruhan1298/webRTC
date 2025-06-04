@@ -4,6 +4,10 @@ var router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const Room = require('../model/room'); // Assuming you have a Room model defined
 
+router.get('/link', function(req, res, next) {
+  res.render('createlink', { title: 'Express' });
+});
+
 router.post('/room-create',userAuth, async function(req, res) { 
  try {
     const createdBy = req.user.id; // Get the user ID from the request

@@ -6,6 +6,8 @@ const logger = require('morgan');
 const session = require('express-session');
 const http = require('http');
 const cors = require('cors');
+var passport=require('passport')
+const flash = require('express-flash');
 
 const { Server } = require('socket.io');
 const { Op } = require('sequelize');
@@ -44,6 +46,28 @@ app.use(cookieParser());
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.use(session({
+  secret: 'secret',
+  resave: false,
+  saveUninitialized: true,
+}));
+require('./middleware/passport')(passport)
+
+app.use(passport.initialize());
+app.use(passport.session());
+app.use(flash());
+app.use((req, res, next) => {
+  res.locals.success_msg = req.flash("success_msg");
+  res.locals.error_msg = req.flash("error_msg");
+  res.locals.error = req.flash("error");
+console.log(req.user)
+  res.locals.user = req.user;
+  
+  next();
+});
+
+
+
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/room', roomRouter);
@@ -57,258 +81,546 @@ const room = require('./model/room');
 
 const user = require('./model/user');
 // user.sync({force:true})
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+// Store room information
+const rooms = new Map();
+const users = new Map();
 
-  // User registration to their personal room (userId)
-  socket.on("register", (userId) => {
-    socket.join(userId.toString());
-    socket.userId = userId; // Store userId in socket for reference
-    console.log(`User ${userId} registered and joined room ${userId}`);
-  });
+// Utility functions
+function getRoomParticipants(roomId) {
+  const room = rooms.get(roomId);
+  return room ? Array.from(room.participants.values()) : [];
+}
 
-  // Chat message handler - FIXED
-// IMPROVED: Chat message handler with better error handling
-socket.on("chat:message", async ({ to, message, from }) => {
-  try {
-    console.log(`💬 Chat message from ${from} to ${to}: ${message}`);
-    
-    // Check if receiver is online
-    const receiverSockets = await io.in(to.toString()).fetchSockets();
-    
-    if (receiverSockets.length === 0) {
-      console.log(`❌ Receiver ${to} is offline`);
-      // Send delivery status back to sender
-      socket.emit("chat:delivery-failed", {
-        to: to,
-        message: "User is offline",
-        originalMessage: message
-      });
-      return;
+function findUserBySocketId(socketId) {
+  for (let [userId, userInfo] of users.entries()) {
+    if (userInfo.socketId === socketId) {
+      return userInfo;
     }
-    
-    // Send message to receiver's room
-    io.to(to.toString()).emit("chat:message", {
-      from: from,
-      message: message,
-      timestamp: new Date().toISOString()
-    });
-    
-    console.log(`✅ Message sent to room: ${to}`);
-    
-    // Send delivery confirmation to sender
-    socket.emit("chat:message-sent", {
-      to: to,
-      message: message,
-      timestamp: new Date().toISOString()
-    });
-    
-  } catch (error) {
-    console.error(`❌ Chat message error:`, error);
-    socket.emit("chat:delivery-failed", {
-      to: to,
-      message: "Message delivery failed",
-      originalMessage: message
-    });
   }
-});
+  return null;
+}
 
-  // Media state handler
-  socket.on("media-state", ({ to, video, audio }) => {
-    console.log(`Media state from socket ${socket.id} to user ${to}: video=${video}, audio=${audio}`);
-    io.to(to.toString()).emit("media-state", {
-      from: socket.id,
-      video: video,
-      audio: audio
-    });
-    console.log(`Media state sent to room: ${to}`);
+function findSocketByUserId(userId) {
+  const user = users.get(userId);
+  if (user) {
+    return io.sockets.sockets.get(user.socketId);
+  }
+  return null;
+}
+
+// Serve static files
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Socket.IO connection handling
+io.on("connection", (socket) => {
+  console.log("🔌 User connected:", socket.id);
+
+  // Direct user registration (for 1-to-1 calls)
+  socket.on("register", ({ userId }) => {
+    try {
+      console.log(`📝 Registration attempt: ${userId}`);
+      
+      // Check if user already exists
+      if (users.has(userId)) {
+        socket.emit("registration:failed", { 
+          message: "User ID already taken" 
+        });
+        return;
+      }
+
+      // Register user
+      socket.join(userId.toString());
+      socket.userId = userId;
+      
+      users.set(userId, {
+        userId: userId,
+        socketId: socket.id,
+        status: 'online',
+        isBusy: false,
+        callId: null
+      });
+
+      socket.emit("registered", { userId, socketId: socket.id });
+      console.log(`✅ User ${userId} registered`);
+      
+    } catch (error) {
+      console.error("❌ Registration error:", error);
+      socket.emit("registration:failed", { 
+        message: "Registration failed" 
+      });
+    }
   });
 
-  // Call initiation
-  socket.on('call:initiated', async ({ callerId, receiverId, callType }) => {
+  // Room functionality
+  socket.on("join-room", ({ roomId, userName }) => {
     try {
-      const receiverSockets = await io.in(receiverId.toString()).fetchSockets();
+      console.log(`🏠 User ${userName} joining room: ${roomId}`);
+      
+      // Create room if it doesn't exist
+      if (!rooms.has(roomId)) {
+        rooms.set(roomId, {
+          id: roomId,
+          participants: new Map(),
+          createdAt: new Date(),
+          callActive: false
+        });
+        console.log(`📝 Created new room: ${roomId}`);
+      }
 
-      if (receiverSockets.length === 0) {
-        // Receiver offline
-        console.log(`Receiver ${receiverId} is offline`);
-        socket.emit('call:busy', { message: 'User is offline' });
+      const room = rooms.get(roomId);
+      
+      // Add participant to room
+      const participant = {
+        socketId: socket.id,
+        userName: userName,
+        joinedAt: new Date(),
+        isReady: false
+      };
+      
+      room.participants.set(socket.id, participant);
+      socket.join(roomId);
+      socket.roomId = roomId;
+      socket.userName = userName;
+
+      // Get current participants list
+      const participants = getRoomParticipants(roomId);
+      
+      // Notify user they joined
+      socket.emit("room-joined", { 
+        roomId, 
+        participants 
+      });
+
+      // Notify other participants
+      socket.to(roomId).emit("participant-joined", { 
+        participant, 
+        participants 
+      });
+
+      console.log(`✅ ${userName} joined room ${roomId}. Total: ${participants.length}`);
+      
+    } catch (error) {
+      console.error("❌ Room join error:", error);
+      socket.emit("room-join-failed", { 
+        message: "Failed to join room" 
+      });
+    }
+  });
+
+  // Room call functionality
+  socket.on("room-ready-for-call", ({ roomId }) => {
+    try {
+      const room = rooms.get(roomId);
+      if (room && room.participants.has(socket.id)) {
+        const participant = room.participants.get(socket.id);
+        participant.isReady = true;
+        
+        console.log(`📹 ${participant.userName} is ready for video in room ${roomId}`);
+        
+        // Find other ready participants and initiate calls
+        for (let [socketId, otherParticipant] of room.participants) {
+          if (socketId !== socket.id && otherParticipant.isReady) {
+            // Send call request to first available participant
+            io.to(socketId).emit("room-call-request", {
+              from: socket.id,
+              fromName: participant.userName,
+              roomId: roomId
+            });
+            console.log(`📞 Sent call request from ${participant.userName} to ${otherParticipant.userName}`);
+            break; // For now, just connect to first available person
+          }
+        }
+      }
+    } catch (error) {
+      console.error("❌ Room call ready error:", error);
+    }
+  });
+
+  // Direct call initiation
+  socket.on("call:initiate", ({ to, callType, callId }) => {
+    try {
+      console.log(`📞 Call initiation: ${socket.userId || socket.id} -> ${to}`);
+      
+      const targetSocket = findSocketByUserId(to);
+      if (!targetSocket) {
+        socket.emit("call:failed", { 
+          message: "User not found or offline" 
+        });
         return;
       }
 
-      // Check if receiver is busy
-      const receiverBusy = receiverSockets.some(s => s.isBusy);
-      if (receiverBusy) {
-        console.log(`Receiver ${receiverId} is busy`);
-        socket.emit('call:busy', { message: 'User is busy' });
+      const targetUser = users.get(to);
+      if (targetUser && targetUser.isBusy) {
+        socket.emit("call:busy", { 
+          message: "User is busy" 
+        });
         return;
       }
 
-      // Generate unique call ID
-      const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Set both users as busy
+      const caller = users.get(socket.userId);
+      if (caller) {
+        caller.isBusy = true;
+        caller.callId = callId;
+      }
+      if (targetUser) {
+        targetUser.isBusy = true;
+        targetUser.callId = callId;
+      }
+
       socket.callId = callId;
+      targetSocket.callId = callId;
 
-      // Mark caller as busy
-      socket.isBusy = true;
-
-      // Notify receiver
-      io.to(receiverId.toString()).emit("call:incoming", {
-        callerId,
-        callType,
+      // Send call invitation
+      targetSocket.emit("call:incoming", {
+        callerId: socket.userId || socket.id,
+        callType: callType,
         callId: callId,
         socketId: socket.id
       });
 
-      console.log(`Call initiated from ${callerId} to ${receiverId}, callId: ${callId}`);
-
-    } catch (err) {
-      console.error('Call initiation error:', err);
+      console.log(`📞 Call sent to ${to}`);
+      
+    } catch (error) {
+      console.error("❌ Call initiation error:", error);
+      socket.emit("call:failed", { message: "Call failed" });
     }
   });
 
   // Call acceptance
-  socket.on('call:accepted', ({ callId }) => {
+  socket.on("call:accept", ({ callId }) => {
     try {
-      console.log(`Call ${callId} accepted`);
+      console.log(`✅ Call accepted: ${callId}`);
       
-      // Mark receiver as busy
-      socket.isBusy = true;
-      socket.callId = callId;
-
-      // Find caller socket and notify
+      // Find the caller
       const allSockets = io.sockets.sockets;
       for (let [socketId, sock] of allSockets) {
         if (sock.callId === callId && sock.id !== socket.id) {
           sock.emit('call:accepted', { callId });
-          console.log(`Notified caller ${sock.id} that call was accepted`);
+          console.log(`✅ Notified caller ${sock.id} of acceptance`);
           break;
         }
       }
-
-    } catch (err) {
-      console.error('Call acceptance error:', err);
+      
+    } catch (error) {
+      console.error("❌ Call accept error:", error);
     }
   });
 
-  // WebRTC signaling handlers
-  socket.on("offer", ({ offer, to }) => {
-    console.log(`Relaying offer from ${socket.id} to user ${to}`);
-    io.to(to.toString()).emit("offer", { from: socket.userId || socket.id, offer });
-  });
-
-  socket.on("answer", ({ answer, to }) => {
-    console.log(`Relaying answer from ${socket.id} to user ${to}`);
-    io.to(to.toString()).emit("answer", { from: socket.userId || socket.id, answer });
-  });
-
-  socket.on("ice-candidate", ({ candidate, to }) => {
-    console.log(`Relaying ICE candidate from ${socket.id} to user ${to}`);
-    io.to(to.toString()).emit("ice-candidate", { from: socket.userId || socket.id, candidate });
-  });
-
   // Call rejection
-  socket.on("call:rejected", ({ callId }) => {
+  socket.on("call:reject", ({ callId }) => {
     try {
-      console.log(`Call ${callId} rejected`);
+      console.log(`❌ Call rejected: ${callId}`);
       
-      // Find caller socket and notify
+      // Find the caller and notify
       const allSockets = io.sockets.sockets;
       for (let [socketId, sock] of allSockets) {
         if (sock.callId === callId && sock.id !== socket.id) {
           sock.emit('call:rejected', { callId });
-          sock.isBusy = false;
+          
+          // Reset states
           sock.callId = null;
-          console.log(`Notified caller ${sock.id} that call was rejected`);
-          break;
-        }
-      }
-      
-      // Reset receiver state
-      socket.isBusy = false;
-      socket.callId = null;
-
-    } catch (err) {
-      console.error("Call rejection error:", err);
-    }
-  });
-
-  // Call cancellation
-  socket.on("call:cancelled", ({ callId }) => {
-    try {
-      console.log(`Call ${callId} cancelled`);
-      
-      // Find receiver socket and notify
-      const allSockets = io.sockets.sockets;
-      for (let [socketId, sock] of allSockets) {
-        if (sock.callId === callId && sock.id !== socket.id) {
-          sock.emit('call:cancelled', { callId });
-          console.log(`Notified receiver ${sock.id} that call was cancelled`);
-          break;
-        }
-      }
-      
-      // Reset caller state
-      socket.isBusy = false;
-      socket.callId = null;
-
-    } catch (err) {
-      console.error("Call cancel error:", err);
-    }
-  });
-
-  // Call ended
-  socket.on('call:ended', ({ callId }) => {
-    try {
-      console.log(`Call ${callId} ended`);
-      
-      // Find other participant and notify
-      const allSockets = io.sockets.sockets;
-      for (let [socketId, sock] of allSockets) {
-        if (sock.callId === callId && sock.id !== socket.id) {
-          sock.emit('call:ended', { callId, duration: 0, status: 'completed' });
           sock.isBusy = false;
-          sock.callId = null;
-          console.log(`Notified participant ${sock.id} that call ended`);
+          
+          const otherUser = findUserBySocketId(sock.id);
+          if (otherUser) {
+            otherUser.isBusy = false;
+            otherUser.callId = null;
+          }
+          
+          console.log(`❌ Notified caller ${sock.id} of rejection`);
           break;
         }
       }
       
       // Reset current socket state
-      socket.isBusy = false;
       socket.callId = null;
-
-    } catch (err) {
-      console.error('Call ended error:', err);
+      socket.isBusy = false;
+      
+      const currentUser = findUserBySocketId(socket.id);
+      if (currentUser) {
+        currentUser.isBusy = false;
+        currentUser.callId = null;
+      }
+      
+    } catch (error) {
+      console.error("❌ Call reject error:", error);
     }
   });
 
-  // User disconnect cleanup
-  socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
-    
-    // If user was in a call, notify the other participant
-    if (socket.callId) {
+  // Call end
+  socket.on("call:end", ({ callId }) => {
+    try {
+      console.log(`📴 Call ended: ${callId}`);
+      
+      // Find other participant and notify
       const allSockets = io.sockets.sockets;
       for (let [socketId, sock] of allSockets) {
-        if (sock.callId === socket.callId && sock.id !== socket.id) {
+        if (sock.callId === callId && sock.id !== socket.id) {
           sock.emit('call:ended', { 
-            callId: socket.callId, 
+            callId, 
             duration: 0,
-            status: 'disconnected' 
+            status: 'ended' 
           });
-          sock.isBusy = false;
+          
+          // Reset states
           sock.callId = null;
-          console.log(`Notified participant ${sock.id} about disconnection`);
+          sock.isBusy = false;
+          
+          const otherUser = findUserBySocketId(sock.id);
+          if (otherUser) {
+            otherUser.isBusy = false;
+            otherUser.callId = null;
+          }
+          
+          console.log(`📴 Notified participant ${sock.id} of call end`);
           break;
         }
       }
+      
+      // Reset current socket state
+      socket.callId = null;
+      socket.isBusy = false;
+      
+      const currentUser = findUserBySocketId(socket.id);
+      if (currentUser) {
+        currentUser.isBusy = false;
+        currentUser.callId = null;
+      }
+      
+    } catch (error) {
+      console.error("❌ Call end error:", error);
     }
+  });
+
+  // WebRTC Signaling
+  socket.on("offer", ({ offer, to }) => {
+    try {
+      console.log(`📡 Relaying offer to: ${to}`);
+      
+      // For room calls, 'to' is socket ID
+      // For direct calls, 'to' might be user ID
+      let targetSocket = io.sockets.sockets.get(to);
+      
+      if (!targetSocket) {
+        // Try finding by user ID
+        targetSocket = findSocketByUserId(to);
+      }
+      
+      if (targetSocket) {
+        targetSocket.emit("offer", { 
+          offer, 
+          from: socket.userId || socket.id 
+        });
+        console.log(`📡 Offer relayed successfully`);
+      } else {
+        console.log(`❌ Target socket not found: ${to}`);
+      }
+      
+    } catch (error) {
+      console.error("❌ Offer relay error:", error);
+    }
+  });
+
+  socket.on("answer", ({ answer, to }) => {
+    try {
+      console.log(`📡 Relaying answer to: ${to}`);
+      
+      let targetSocket = io.sockets.sockets.get(to);
+      
+      if (!targetSocket) {
+        targetSocket = findSocketByUserId(to);
+      }
+      
+      if (targetSocket) {
+        targetSocket.emit("answer", { 
+          answer, 
+          from: socket.userId || socket.id 
+        });
+        console.log(`📡 Answer relayed successfully`);
+      } else {
+        console.log(`❌ Target socket not found: ${to}`);
+      }
+      
+    } catch (error) {
+      console.error("❌ Answer relay error:", error);
+    }
+  });
+
+  socket.on("ice-candidate", ({ candidate, to }) => {
+    try {
+      console.log(`🧊 Relaying ICE candidate to: ${to}`);
+      
+      let targetSocket = io.sockets.sockets.get(to);
+      
+      if (!targetSocket) {
+        targetSocket = findSocketByUserId(to);
+      }
+      
+      if (targetSocket) {
+        targetSocket.emit("ice-candidate", { 
+          candidate, 
+          from: socket.userId || socket.id 
+        });
+      } else {
+        console.log(`❌ Target socket not found for ICE: ${to}`);
+      }
+      
+    } catch (error) {
+      console.error("❌ ICE candidate relay error:", error);
+    }
+  });
+
+  // Media state updates
+  socket.on("media-state", ({ to, video, audio }) => {
+    try {
+      let targetSocket = io.sockets.sockets.get(to);
+      
+      if (!targetSocket) {
+        targetSocket = findSocketByUserId(to);
+      }
+      
+      if (targetSocket) {
+        targetSocket.emit("media-state", { 
+          from: socket.userId || socket.id,
+          video, 
+          audio 
+        });
+        console.log(`📡 Media state relayed: video=${video}, audio=${audio}`);
+      }
+      
+    } catch (error) {
+      console.error("❌ Media state relay error:", error);
+    }
+  });
+
+  // Chat functionality
+  socket.on("chat:message", ({ to, message }) => {
+    try {
+      let targetSocket = findSocketByUserId(to);
+      
+      if (targetSocket) {
+        targetSocket.emit("chat:message", {
+          from: socket.userId || socket.userName || socket.id,
+          message: message,
+          timestamp: new Date().toISOString()
+        });
+        
+        socket.emit("chat:message-sent", {
+          to: to,
+          message: message,
+          timestamp: new Date().toISOString()
+        });
+        
+        console.log(`💬 Message relayed: ${socket.userId} -> ${to}`);
+      } else {
+        socket.emit("chat:delivery-failed", {
+          to: to,
+          message: "User not available",
+          originalMessage: message
+        });
+      }
+      
+    } catch (error) {
+      console.error("❌ Chat message error:", error);
+    }
+  });
+
+  socket.on("chat:room-message", ({ roomId, message }) => {
+    try {
+      if (socket.roomId === roomId) {
+        socket.to(roomId).emit("chat:message", {
+          from: socket.userName || socket.id,
+          message: message,
+          timestamp: new Date().toISOString()
+        });
+        console.log(`💬 Room message sent in ${roomId}: ${message}`);
+      }
+    } catch (error) {
+      console.error("❌ Room chat error:", error);
+    }
+  });
+
+  // Disconnect handling
+  socket.on("disconnect", () => {
+    console.log("🔌 User disconnected:", socket.id);
     
-    // Reset socket state
-    socket.isBusy = false;
-    socket.callId = null;
+    try {
+      // Handle room cleanup
+      if (socket.roomId) {
+        const room = rooms.get(socket.roomId);
+        if (room) {
+          const participant = room.participants.get(socket.id);
+          room.participants.delete(socket.id);
+          
+          // Notify other participants
+          socket.to(socket.roomId).emit("participant-left", { 
+            participant: participant,
+            participants: getRoomParticipants(socket.roomId) 
+          });
+          
+          // Delete room if empty
+          if (room.participants.size === 0) {
+            rooms.delete(socket.roomId);
+            console.log(`🗑️ Deleted empty room: ${socket.roomId}`);
+          }
+          
+          console.log(`🏠 ${participant?.userName || 'User'} left room ${socket.roomId}`);
+        }
+      }
+      
+      // Handle direct user cleanup
+      const user = findUserBySocketId(socket.id);
+      if (user) {
+        users.delete(user.userId);
+        console.log(`🗑️ Removed user: ${user.userId}`);
+      }
+      
+      // Handle active call cleanup
+      if (socket.callId) {
+        const allSockets = io.sockets.sockets;
+        for (let [socketId, sock] of allSockets) {
+          if (sock.callId === socket.callId && sock.id !== socket.id) {
+            sock.emit('call:ended', { 
+              callId: socket.callId, 
+              duration: 0,
+              status: 'disconnected' 
+            });
+            sock.isBusy = false;
+            sock.callId = null;
+            
+            const otherUser = findUserBySocketId(sock.id);
+            if (otherUser) {
+              otherUser.isBusy = false;
+              otherUser.callId = null;
+            }
+            
+            console.log(`📴 Notified participant ${sock.id} about disconnection`);
+            break;
+          }
+        }
+      }
+      
+      socket.isBusy = false;
+      socket.callId = null;
+      
+    } catch (error) {
+      console.error("❌ Disconnect cleanup error:", error);
+    }
   });
 });
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    rooms: rooms.size,
+    users: users.size,
+    activeConnections: io.sockets.sockets.size
+  });
+});
+
 
 // ===================== ROUTES ===================== //
 // app.get('/calls/:userId', async (req, res) => {
