@@ -86,26 +86,21 @@ const user = require('./model/user');
 io.on('connection', socket => {
   socket.on('join', room => {
     socket.join(room);
-    socket.to(room).emit('user-joined', socket.id);
+    socket.to(room).emit('user-joined');
   });
 
   socket.on('offer', data => {
-    socket.to(data.room).emit('offer', data.offer, socket.id);
+    socket.to(data.room).emit('offer', data.offer);
   });
 
   socket.on('answer', data => {
-    socket.to(data.room).emit('answer', data.answer, socket.id);
+    socket.to(data.room).emit('answer', data.answer);
   });
 
   socket.on('ice-candidate', data => {
-    socket.to(data.room).emit('ice-candidate', data.candidate, socket.id);
-  });
-
-  socket.on('chat-message', data => {
-    socket.to(data.room).emit('chat-message', data);
+    socket.to(data.room).emit('ice-candidate', data.candidate);
   });
 });
-
 // ===================== ROUTES ===================== //
 // app.get('/calls/:userId', async (req, res) => {
 //   try {

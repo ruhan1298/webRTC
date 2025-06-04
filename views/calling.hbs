@@ -86,7 +86,6 @@
       height: 250px;
       max-width: 600px;
       margin: 0 auto 30px;
-    }
     #chatBox {
       flex: 1;
       overflow-y: auto;
@@ -150,7 +149,7 @@
       <button onclick="toggleAudio()">Mute/Unmute</button>
       <button onclick="toggleVideo()">Camera On/Off</button>
       <button onclick="startScreenShare()">Share Screen</button>
-      <button onclick="sendMessage('Goodbye!')">Leave Call</button>
+      
     </div>
 
     <section id="chatSection">
@@ -284,20 +283,6 @@
         document.getElementById('callTimer').innerText = ${mins}:${secs.toString().padStart(2, '0')};
       }, 1000);
     }
-    window.onbeforeunload = () => {
-      socket.emit('leave', room);
-      if (peerConnection) {
-        peerConnection.close();
-        
-      }
-    };
-    socket.on('disconnect', () => {
-      if (peerConnection) {
-        peerConnection.close();
-      }
-      alert('You have been disconnected from the call.');
-    });
-
   </script>
 </body>
 </html>
