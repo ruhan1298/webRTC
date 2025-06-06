@@ -220,7 +220,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const PORT = 3002;
+const PORT = 3000;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
