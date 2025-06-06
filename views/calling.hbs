@@ -3,675 +3,1119 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Multi-User Call Room</title>
-    <style>
-    body {
+  <title>CallSpace - Professional Video Conference</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    * {
       margin: 0;
-      font-family: 'Inter', sans-serif;
-      background: #0e0e0e;
-      color: #f1f1f1;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
+      padding: 0;
+      box-sizing: border-box;
     }
 
-    header {
-      background: #1f1f1f;
-      padding: 16px 40px;
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #ffffff;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .call-container {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+    }
+
+    /* Header */
+    .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      padding: 20px 30px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .meeting-info {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .room-id {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 8px 16px;
+      border-radius: 20px;
       font-weight: 600;
-      font-size: 1.2rem;
-      border-bottom: 1px solid #333;
-      position: sticky;
-      top: 0;
-      z-index: 999;
+      font-size: 14px;
     }
 
-    #callTimer {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 1rem;
-      background: #333;
+    .timer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .recording-dot {
+      width: 8px;
+      height: 8px;
+      background: #ff4757;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+
+    .participants-count {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.15);
       padding: 8px 14px;
-      border-radius: 8px;
+      border-radius: 15px;
+      font-size: 14px;
     }
 
-    main {
+    /* Main Content */
+    .main-content {
       flex: 1;
       display: grid;
-      grid-template-columns: 2fr 1fr;
-      gap: 20px;
-      padding: 20px 30px;
-      background: #141414;
-      overflow-y: auto;
+      grid-template-columns: 1fr 350px;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* Video Section */
+    .video-section {
+      position: relative;
+      background: rgba(0, 0, 0, 0.2);
+      display: flex;
+      flex-direction: column;
     }
 
     .videos {
+      flex: 1;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 16px;
-      padding: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 15px;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .video-tile {
+      position: relative;
+      background: #1a1a2e;
+      border-radius: 16px;
+      overflow: hidden;
+      aspect-ratio: 16/10;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      border: 2px solid transparent;
+      transition: all 0.3s ease;
+    }
+
+    .video-tile:hover {
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .video-tile.speaking {
+      border-color: #00d4aa;
+      box-shadow: 0 0 20px rgba(0, 212, 170, 0.4);
     }
 
     video {
       width: 100%;
-      border-radius: 12px;
-      background: black;
+      height: 100%;
       object-fit: cover;
-      aspect-ratio: 4 / 3;
-      border: 3px solid #3a8ee6;
-      box-shadow: 0 0 10px rgba(0,0,0,0.6);
+      background: linear-gradient(45deg, #1a1a2e, #16213e);
+      border-radius: 16px;
     }
 
-    .rightPanel {
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 10px;
-    }
-
-    .controls button,
-    .controls select,
-    .controls input[type="color"],
-    .controls input[type="range"] {
-      background: #3a8ee6;
-      border: none;
-      color: white;
-      font-size: 0.95rem;
-      padding: 10px 14px;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: 0.3s ease;
-      min-width: 90px;
-    }
-
-    .controls button:hover,
-    .controls select:hover {
-      background: #2c6fc2;
-    }
-
-    #clearBtn {
-      background: #e63946;
-    }
-    #clearBtn:hover {
-      background: #c92e3b;
-    }
-
-    canvas#whiteboard {
-      border: 2px dashed #555;
-      border-radius: 10px;
-      background: #1a1a1a;
-      height: 300px;
-      width: 100%;
-      box-shadow: inset 0 0 10px rgba(0,0,0,0.4);
-    }
-
-    #chatSection {
-      background: #1e1e1e;
-      border-radius: 10px;
+    .video-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
       padding: 15px;
       display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .participant-name {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .participant-status {
+      display: flex;
+      gap: 8px;
+    }
+
+    .status-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+    }
+
+    .mic-off { background: #ff4757; }
+    .video-off { background: #5f27cd; }
+
+    /* Control Bar */
+    .control-bar {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 15px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(20px);
+      padding: 15px 25px;
+      border-radius: 25px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .control-btn {
+      width: 50px;
+      height: 50px;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: all 0.3s ease;
+      position: relative;
+      color: white;
+    }
+
+    .control-btn.mic { background: #10ac84; }
+    .control-btn.mic.muted { background: #ff4757; }
+    .control-btn.video { background: #3742fa; }
+    .control-btn.video.off { background: #747d8c; }
+    .control-btn.screen { background: #7bed9f; color: #2c2c54; }
+    .control-btn.screen.active { background: #70a1ff; color: white; }
+    .control-btn.end { background: #ff4757; }
+    .control-btn.settings { background: #a4b0be; }
+
+    .control-btn:hover {
+      transform: scale(1.1);
+    }
+
+    .control-btn:active {
+      transform: scale(0.95);
+    }
+
+    /* Right Panel */
+    .right-panel {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px);
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
       flex-direction: column;
-      height: 250px;
+    }
+
+    .panel-tabs {
+      display: flex;
+      background: rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 15px;
+      border: none;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .tab-btn.active {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.1);
+      border-bottom: 2px solid #70a1ff;
+    }
+
+    .tab-content {
+      flex: 1;
+      overflow: hidden;
+      display: none;
+    }
+
+    .tab-content.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Chat Section */
+    .chat-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
     }
 
     #chatBox {
       flex: 1;
       overflow-y: auto;
+      margin-bottom: 15px;
       padding-right: 10px;
-      font-size: 0.9rem;
-      color: #ddd;
-      border-bottom: 1px solid #444;
-      margin-bottom: 10px;
+      font-size: 14px;
+      line-height: 1.5;
     }
 
     #chatBox div {
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
       word-wrap: break-word;
+      animation: fadeInUp 0.3s ease;
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .chat-input-container {
+      display: flex;
+      gap: 10px;
+      align-items: center;
     }
 
     #chatInput {
-      padding: 10px;
-      border-radius: 8px;
-      border: none;
-      font-size: 1rem;
-      background: #2c2c2c;
-      color: white;
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.3s ease;
     }
 
     #chatInput:focus {
-      background: #3a8ee6;
+      border-color: #70a1ff;
+      background: rgba(255, 255, 255, 0.15);
     }
-  #colorPicker {
-  width: 70px;
-  height: 70px;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-}
 
-    @media (max-width: 800px) {
-      main {
+    .send-btn {
+      width: 40px;
+      height: 40px;
+      border: none;
+      border-radius: 50%;
+      background: #70a1ff;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+
+    .send-btn:hover {
+      background: #5352ed;
+      transform: scale(1.05);
+    }
+
+    /* Whiteboard Section */
+    .whiteboard-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .controls select,
+    .controls input[type="color"],
+    .controls input[type="range"] {
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.3s ease;
+    }
+
+    .controls select:focus,
+    .controls input:focus {
+      border-color: #70a1ff;
+      background: rgba(255, 255, 255, 0.15);
+      outline: none;
+    }
+
+    #colorPicker {
+      width: 35px;
+      height: 35px;
+      padding: 0;
+      border-radius: 8px;
+    }
+
+    #brushSize {
+      width: 80px;
+    }
+
+    #clearBtn {
+      padding: 8px 12px;
+      border: none;
+      border-radius: 8px;
+      background: #ff4757;
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.3s ease;
+    }
+
+    #clearBtn:hover {
+      background: #ff3838;
+      transform: scale(1.05);
+    }
+
+    #whiteboard {
+      flex: 1;
+      border: 2px dashed rgba(255, 255, 255, 0.3);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      cursor: crosshair;
+    }
+
+    #status {
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      font-size: 12px;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 1024px) {
+      .main-content {
+        grid-template-columns: 1fr;
+      }
+      
+      .right-panel {
+        position: fixed;
+        top: 0;
+        right: -350px;
+        width: 350px;
+        height: 100vh;
+        z-index: 1000;
+        transition: right 0.3s ease;
+      }
+      
+      .right-panel.open {
+        right: 0;
+      }
+      
+      .mobile-toggle {
+        display: block !important;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .videos {
         grid-template-columns: 1fr;
         padding: 15px;
       }
-
-      canvas#whiteboard {
-        height: 250px;
+      
+      .control-bar {
+        bottom: 20px;
+        padding: 12px 20px;
       }
-
-      header {
-        flex-direction: column;
-        gap: 8px;
-        text-align: center;
+      
+      .control-btn {
+        width: 45px;
+        height: 45px;
+        font-size: 16px;
       }
+      
+      .header {
+        padding: 15px 20px;
+      }
+      
+      .meeting-info {
+        gap: 15px;
+      }
+    }
 
+    .mobile-toggle {
+      display: none;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
-  <header>
-    <div>Room ID: <strong id="roomId">#12345</strong></div>
-    <div id="callTimer">00:00</div>
-  </header>
-
-  <main>
-    <div class="videos" id="videosContainer">
-      <video id="localVideo" autoplay muted playsinline></video>
+  <div class="call-container">
+    <!-- Header -->
+    <div class="header">
+      <div class="meeting-info">
+        <div class="room-id">
+          <i class="fas fa-lock"></i> Room: <strong id="roomId">#loading...</strong>
+        </div>
+        <div class="timer">
+          <div class="recording-dot"></div>
+          <span id="callTimer">00:00</span>
+        </div>
+      </div>
+      <div class="participants-count">
+        <i class="fas fa-users"></i>
+        <span id="participantCount">0 participants</span>
+        <button class="mobile-toggle" onclick="togglePanel()">
+          <i class="fas fa-bars"></i>
+        </button>
+      </div>
     </div>
 
-    <div class="rightPanel">
-      <div class="controls">
-        <button onclick="toggleAudio()">Mute</button>
-        <button onclick="toggleVideo()">Video</button>
-        <button onclick="startScreenShare()">Share</button>
-        <button onclick="endCall()">End</button>
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Video Section -->
+      <div class="video-section">
+        <div class="videos" id="videosContainer">
+          <div class="video-tile">
+            <video id="localVideo" autoplay muted playsinline></video>
+            <div class="video-overlay">
+              <span class="participant-name">You</span>
+              <div class="participant-status">
+                <div class="status-icon mic-off" id="localMicStatus">
+                  <i class="fas fa-microphone-slash"></i>
+                </div>
+                <div class="status-icon video-off" id="localVideoStatus" style="display: none;">
+                  <i class="fas fa-video-slash"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Control Bar -->
+        <div class="control-bar">
+          <button class="control-btn mic muted" id="micBtn" onclick="toggleAudio()" title="Unmute">
+            <i class="fas fa-microphone-slash"></i>
+          </button>
+          <button class="control-btn video" id="videoBtn" onclick="toggleVideo()" title="Turn off camera">
+            <i class="fas fa-video"></i>
+          </button>
+          <button class="control-btn screen" id="screenBtn" onclick="startScreenShare()" title="Share screen">
+            <i class="fas fa-desktop"></i>
+          </button>
+          <button class="control-btn settings" onclick="togglePanel()" title="Toggle panel">
+            <i class="fas fa-cog"></i>
+          </button>
+          <button class="control-btn end" onclick="endCall()" title="End call">
+            <i class="fas fa-phone-slash"></i>
+          </button>
+        </div>
       </div>
 
-      <div class="controls">
-        <select id="toolSelect">
-          <option value="pencil">Pencil</option>
-          <option value="brush">Brush</option>
-          <option value="eraser">Eraser</option>
-          <option value="line">Line</option>
-          <option value="rectangle">Rectangle</option>
-          <option value="circle">Circle</option>
-          <option value="text">Text</option>
-        </select>
-        <input type="color" id="colorPicker" value="#ffffff"  />
-        <input type="range" id="brushSize" min="1" max="40" value="5" />
-        <button id="clearBtn">Clear</button>
+      <!-- Right Panel -->
+      <div class="right-panel" id="rightPanel">
+        <div class="panel-tabs">
+          <button class="tab-btn active" onclick="switchTab('chat')">
+            <i class="fas fa-comments"></i> Chat
+          </button>
+          <button class="tab-btn" onclick="switchTab('whiteboard')">
+            <i class="fas fa-chalkboard"></i> Board
+          </button>
+        </div>
+
+        <!-- Chat Tab -->
+        <div class="tab-content active" id="chatTab">
+          <div class="chat-section">
+            <div id="chatBox"></div>
+            <div class="chat-input-container">
+              <input type="text" id="chatInput" placeholder="Type a message..." 
+                     onkeydown="if(event.key==='Enter') sendMessage(this.value)">
+              <button class="send-btn" onclick="sendMessage(document.getElementById('chatInput').value)">
+                <i class="fas fa-paper-plane"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Whiteboard Tab -->
+        <div class="tab-content" id="whiteboardTab">
+          <div class="whiteboard-section">
+            <div id="status">Selected Tool: pencil</div>
+            <div class="controls">
+              <select id="toolSelect">
+                <option value="pencil">Pencil</option>
+                <option value="brush">Brush</option>
+                <option value="eraser">Eraser</option>
+                <option value="line">Line</option>
+                <option value="rectangle">Rectangle</option>
+                <option value="circle">Circle</option>
+                <option value="text">Text</option>
+              </select>
+              <input type="color" id="colorPicker" value="#ffffff">
+              <input type="range" id="brushSize" min="1" max="40" value="5">
+              <button id="clearBtn">Clear</button>
+            </div>
+            <canvas id="whiteboard" width="800" height="600"></canvas>
+          </div>
+        </div>
       </div>
-
-      <canvas id="whiteboard" width="800" height="600"></canvas>
-
-      <section id="chatSection">
-        <div id="chatBox"></div>
-        <input id="chatInput" placeholder="Type and press Enter..." onkeydown="if(event.key==='Enter') sendMessage(this.value)" />
-      </section>
     </div>
-  </main>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
- <script>
-  const socket = io();
+  <script>
+    const socket = io();
 
-  // Get room from URL or default
-  const urlParams = new URLSearchParams(window.location.search);
-  const room = urlParams.get('room') || 'default-room';
-  document.getElementById('roomId').innerText = room;
+    // Get room from URL or default
+    const urlParams = new URLSearchParams(window.location.search);
+    const room = urlParams.get('room') || 'default-room';
+    document.getElementById('roomId').innerText = '#' + room;
 
-  const localVideo = document.getElementById('localVideo');
-  const videosContainer = document.querySelector('.videos');
-  const chatBox = document.getElementById('chatBox');
+    const localVideo = document.getElementById('localVideo');
+    const videosContainer = document.querySelector('.videos');
+    const chatBox = document.getElementById('chatBox');
 
-  let localStream;
-  const peers = {}; // socketId -> RTCPeerConnection
-  let startTime;
+    let localStream;
+    const peers = {}; // socketId -> RTCPeerConnection
+    let startTime;
+    let audioMuted = false;
+    let videoOn = true;
+    let screenSharing = false;
+    let participantCount = 0;
 
-  const config = {
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-  };
-
-  // Get local media and join room
-  (async () => {
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      localVideo.srcObject = localStream;
-      socket.emit('join', room);
-    } catch (e) {
-      alert('Could not access camera and microphone: ' + e.message);
-    }
-  })();
-
-  socket.on('all-users', users => {
-    users.forEach(userId => {
-      createPeerConnection(userId, true);
-    });
-    startTimer();
-  });
-
-  socket.on('user-joined', userId => {
-    createPeerConnection(userId, false);
-  });
-
-  socket.on('offer', async ({ from, offer }) => {
-    const pc = createPeerConnection(from, false);
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    socket.emit('answer', { to: from, answer: pc.localDescription });
-  });
-
-  socket.on('answer', async ({ from, answer }) => {
-    const pc = peers[from];
-    if (!pc) return;
-    await pc.setRemoteDescription(new RTCSessionDescription(answer));
-  });
-
-  socket.on('ice-candidate', ({ from, candidate }) => {
-    const pc = peers[from];
-    if (!pc) return;
-    pc.addIceCandidate(new RTCIceCandidate(candidate));
-  });
-
-  socket.on('user-left', userId => {
-    if (peers[userId]) {
-      peers[userId].close();
-      delete peers[userId];
-    }
-    const videoEl = document.getElementById('remoteVideo-' + userId);
-    if (videoEl) {
-      videoEl.srcObject = null;
-      videoEl.parentNode.removeChild(videoEl);
-    }
-  });
-
-  // Chat message received
-  socket.on('chat-message', ({ from, msg }) => {
-    const you = from === socket.id ? 'You' : `User ${from.substring(0, 6)}`;
-    chatBox.innerHTML += `<div><b>${you}:</b> ${msg}</div>`;
-    chatBox.scrollTop = chatBox.scrollHeight;
-  });
-
-  // Create peer connection and set up handlers
-  function createPeerConnection(userId, isInitiator) {
-    if (peers[userId]) return peers[userId];
-
-    const pc = new RTCPeerConnection(config);
-    peers[userId] = pc;
-
-    // Add local tracks to peer connection
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-
-    // Create video element for this remote user
-    let remoteVideo = document.getElementById('remoteVideo-' + userId);
-    if (!remoteVideo) {
-      remoteVideo = document.createElement('video');
-      remoteVideo.id = 'remoteVideo-' + userId;
-      remoteVideo.autoplay = true;
-      remoteVideo.playsInline = true;
-      remoteVideo.style.width = '300px';
-      remoteVideo.style.border = '3px solid #3a8ee6';
-      remoteVideo.style.borderRadius = '12px';
-      remoteVideo.style.boxShadow = '0 0 12px rgba(0,0,0,0.8)';
-      videosContainer.appendChild(remoteVideo);
-    }
-
-    const remoteStream = new MediaStream();
-    remoteVideo.srcObject = remoteStream;
-
-    pc.ontrack = event => {
-      event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+    const config = {
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     };
 
-    pc.onicecandidate = event => {
-      if (event.candidate) {
-        socket.emit('ice-candidate', { to: userId, candidate: event.candidate });
-      }
-    };
-
-    if (isInitiator) {
-      pc.createOffer().then(offer => {
-        pc.setLocalDescription(offer).then(() => {
-          socket.emit('offer', { to: userId, offer: pc.localDescription });
-        });
-      });
+    // UI Functions
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+      
+      event.target.classList.add('active');
+      document.getElementById(tabName + 'Tab').classList.add('active');
     }
 
-    return pc;
-  }
+    function togglePanel() {
+      const panel = document.getElementById('rightPanel');
+      panel.classList.toggle('open');
+    }
 
-  // Chat message send
-  function sendMessage(msg) {
-    if (!msg.trim()) return;
-    socket.emit('chat-message', { room, msg });
-    chatBox.innerHTML += `<div style="text-align:right; color:#7fbf7f;"><b>You:</b> ${msg}</div>`;
-    chatBox.scrollTop = chatBox.scrollHeight;
-    document.getElementById('chatInput').value = '';
-  }
+    function updateParticipantCount() {
+      participantCount = Object.keys(peers).length + 1; // +1 for local user
+      document.getElementById('participantCount').textContent = `${participantCount} participant${participantCount !== 1 ? 's' : ''}`;
+    }
 
-  // Audio toggle
-  function toggleAudio() {
-    if (!localStream) return;
-    const audioTrack = localStream.getAudioTracks()[0];
-    audioTrack.enabled = !audioTrack.enabled;
-  }
-
-  // Video toggle
-  function toggleVideo() {
-    if (!localStream) return;
-    const videoTrack = localStream.getVideoTracks()[0];
-    videoTrack.enabled = !videoTrack.enabled;
-  }
-
-  // Screen share
-  async function startScreenShare() {
-    try {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      const screenTrack = screenStream.getVideoTracks()[0];
-
-      // Replace track on each peer connection
-      for (const userId in peers) {
-        const sender = peers[userId].getSenders().find(s => s.track.kind === 'video');
-        if (sender) sender.replaceTrack(screenTrack);
-      }
-
-      // Update local video preview
-      localVideo.srcObject = screenStream;
-
-      screenTrack.onended = () => {
-        // Restore original camera video track
-        for (const userId in peers) {
-          const sender = peers[userId].getSenders().find(s => s.track.kind === 'video');
-          if (sender) sender.replaceTrack(localStream.getVideoTracks()[0]);
-        }
+    // Get local media and join room
+    (async () => {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.srcObject = localStream;
-      };
-    } catch (e) {
-      alert('Screen share failed or cancelled.');
-    }
-  }
+        
+        // Initially mute audio
+        const audioTrack = localStream.getAudioTracks()[0];
+        if (audioTrack) {
+          audioTrack.enabled = false;
+          audioMuted = true;
+        }
+        
+        socket.emit('join', room);
+      } catch (e) {
+        alert('Could not access camera and microphone: ' + e.message);
+      }
+    })();
 
-  // Call timer
-  function startTimer() {
-    startTime = Date.now();
-    setInterval(() => {
-      const diff = Date.now() - startTime;
-      const mins = Math.floor(diff / 60000);
-      const secs = Math.floor((diff % 60000) / 1000);
-      document.getElementById('callTimer').innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
-    }, 1000);
-  }
+    socket.on('all-users', users => {
+      users.forEach(userId => {
+        createPeerConnection(userId, true);
+      });
+      updateParticipantCount();
+      startTimer();
+    });
 
-  // End call
-  function endCall() {
-    for (const userId in peers) {
-      peers[userId].close();
-      delete peers[userId];
+    socket.on('user-joined', userId => {
+      createPeerConnection(userId, false);
+      updateParticipantCount();
+    });
+
+    socket.on('offer', async ({ from, offer }) => {
+      const pc = createPeerConnection(from, false);
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit('answer', { to: from, answer: pc.localDescription });
+    });
+
+    socket.on('answer', async ({ from, answer }) => {
+      const pc = peers[from];
+      if (!pc) return;
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    });
+
+    socket.on('ice-candidate', ({ from, candidate }) => {
+      const pc = peers[from];
+      if (!pc) return;
+      pc.addIceCandidate(new RTCIceCandidate(candidate));
+    });
+
+    socket.on('user-left', userId => {
+      if (peers[userId]) {
+        peers[userId].close();
+        delete peers[userId];
+      }
       const videoEl = document.getElementById('remoteVideo-' + userId);
       if (videoEl) {
         videoEl.srcObject = null;
         videoEl.parentNode.removeChild(videoEl);
       }
-    }
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-    }
-    socket.emit('leave', room);
-    window.location.reload(); // Or redirect somewhere
-  }
-    // Whiteboard drawing and tools
-    document.addEventListener('DOMContentLoaded', () => {
-      const canvas = document.getElementById('whiteboard');
-      const ctx = canvas.getContext('2d');
-      const clearBtn = document.getElementById('clearBtn');
-      const statusEl = document.getElementById('status');
-      const colorPicker = document.getElementById('colorPicker');
-      const brushSizeInput = document.getElementById('brushSize');
-      const toolSelect = document.getElementById('toolSelect');
+      updateParticipantCount();
+    });
 
-      const roomId = room;
+    // Chat message received
+    socket.on('chat-message', ({ from, msg }) => {
+      const you = from === socket.id ? 'You' : `User ${from.substring(0, 6)}`;
+      chatBox.innerHTML += `<div><b>${you}:</b> ${msg}</div>`;
+      chatBox.scrollTop = chatBox.scrollHeight;
+    });
 
-      let drawing = false;
-      let startX = 0;
-      let startY = 0;
-      let currentTool = toolSelect.value;
-      let currentColor = colorPicker.value;
-      let brushSize = parseInt(brushSizeInput.value, 10);
-      let eraserEnabled = false;
-      let textInputActive = false;
+    // Create peer connection and set up handlers
+    function createPeerConnection(userId, isInitiator) {
+      if (peers[userId]) return peers[userId];
 
-      // Utility to get mouse position relative to canvas
-      function getMousePos(evt) {
-        const rect = canvas.getBoundingClientRect();
-        return {
-          x: evt.clientX - rect.left,
-          y: evt.clientY - rect.top
-        };
+      const pc = new RTCPeerConnection(config);
+      peers[userId] = pc;
+
+      // Add local tracks to peer connection
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+      // Create video element for this remote user
+      let remoteVideoContainer = document.getElementById('remoteVideo-' + userId);
+      if (!remoteVideoContainer) {
+        remoteVideoContainer = document.createElement('div');
+        remoteVideoContainer.className = 'video-tile';
+        remoteVideoContainer.id = 'remoteVideo-' + userId;
+        
+        const remoteVideo = document.createElement('video');
+        remoteVideo.autoplay = true;
+        remoteVideo.playsInline = true;
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'video-overlay';
+        overlay.innerHTML = `
+          <span class="participant-name">User ${userId.substring(0, 6)}</span>
+          <div class="participant-status"></div>
+        `;
+        
+        remoteVideoContainer.appendChild(remoteVideo);
+        remoteVideoContainer.appendChild(overlay);
+        videosContainer.appendChild(remoteVideoContainer);
       }
 
-      // Clear canvas
-      clearBtn.addEventListener('click', () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        socket.emit('whiteboard-clear', roomId);
-      });
+      const remoteVideo = remoteVideoContainer.querySelector('video');
+      const remoteStream = new MediaStream();
+      remoteVideo.srcObject = remoteStream;
 
-      // Tool select
-      toolSelect.addEventListener('change', e => {
-        currentTool = e.target.value;
-        eraserEnabled = (currentTool === 'eraser');
-        statusEl.textContent = `Selected Tool: ${currentTool}`;
-      });
+      pc.ontrack = event => {
+        event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+      };
 
-      // Color picker
-      colorPicker.addEventListener('change', e => {
-        currentColor = e.target.value;
-      });
-
-      // Brush size
-      brushSizeInput.addEventListener('input', e => {
-        brushSize = parseInt(e.target.value, 10);
-      });
-
-      // Draw line helper
-      function drawLine(x1, y1, x2, y2, color, size) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = size;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
-
-      // Draw rectangle helper
-      function drawRect(x, y, w, h, color, size) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = size;
-        ctx.strokeRect(x, y, w, h);
-      }
-
-      // Draw circle helper
-      function drawCircle(x, y, radius, color, size) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = size;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, 2 * Math.PI);
-        ctx.stroke();
-      }
-
-      // Draw text helper
-      function drawText(x, y, text, color, size) {
-        ctx.fillStyle = color;
-        ctx.font = `${size * 4}px sans-serif`;
-        ctx.fillText(text, x, y);
-      }
-
-      let lastX = 0;
-      let lastY = 0;
-
-      // Mouse down
-      canvas.addEventListener('mousedown', (e) => {
-        if (textInputActive) return; // prevent drawing while text input active
-
-        drawing = true;
-        const pos = getMousePos(e);
-        startX = pos.x;
-        startY = pos.y;
-        lastX = pos.x;
-        lastY = pos.y;
-
-        if (currentTool === 'text') {
-          // Create a text input at clicked position
-          createTextInput(pos.x, pos.y);
-          drawing = false;
-          return;
+      pc.onicecandidate = event => {
+        if (event.candidate) {
+          socket.emit('ice-candidate', { to: userId, candidate: event.candidate });
         }
-      });
+      };
 
-      // Mouse move
-      canvas.addEventListener('mousemove', (e) => {
-        if (!drawing) return;
-        const pos = getMousePos(e);
-
-        if (currentTool === 'pencil' || currentTool === 'brush' || currentTool === 'eraser') {
-          const color = (currentTool === 'eraser') ? '#121212' : currentColor;
-          const size = (currentTool === 'brush') ? brushSize * 2 : brushSize;
-          drawLine(lastX, lastY, pos.x, pos.y, color, size);
-          socket.emit('whiteboard-draw', {
-            roomId,
-            tool: currentTool,
-            color,
-            size,
-            fromX: lastX,
-            fromY: lastY,
-            toX: pos.x,
-            toY: pos.y
+      if (isInitiator) {
+        pc.createOffer().then(offer => {
+          pc.setLocalDescription(offer).then(() => {
+            socket.emit('offer', { to: userId, offer: pc.localDescription });
           });
-          lastX = pos.x;
-          lastY = pos.y;
-        }
-      });
-
-      // Mouse up
-      canvas.addEventListener('mouseup', (e) => {
-        if (!drawing) return;
-        drawing = false;
-        const pos = getMousePos(e);
-
-        // Shapes and line tools draw shape on mouse up
-        if (['line', 'rectangle', 'circle'].includes(currentTool)) {
-          let shapeData = null;
-          switch (currentTool) {
-            case 'line':
-              drawLine(startX, startY, pos.x, pos.y, currentColor, brushSize);
-              shapeData = { type: 'line', startX, startY, endX: pos.x, endY: pos.y, color: currentColor, size: brushSize };
-              break;
-            case 'rectangle':
-              const width = pos.x - startX;
-              const height = pos.y - startY;
-              drawRect(startX, startY, width, height, currentColor, brushSize);
-              shapeData = { type: 'rectangle', startX, startY, width, height, color: currentColor, size: brushSize };
-              break;
-            case 'circle':
-              const radius = Math.sqrt(Math.pow(pos.x - startX, 2) + Math.pow(pos.y - startY, 2));
-              drawCircle(startX, startY, radius, currentColor, brushSize);
-              shapeData = { type: 'circle', centerX: startX, centerY: startY, radius, color: currentColor, size: brushSize };
-              break;
-          }
-          if (shapeData) {
-            socket.emit('whiteboard-shape', { roomId, shapeData });
-          }
-        }
-      });
-
-      // Mouse leave - stop drawing if mouse leaves canvas
-      canvas.addEventListener('mouseleave', () => {
-        drawing = false;
-      });
-
-      // Text input creation
-      function createTextInput(x, y) {
-        if (textInputActive) return;
-        textInputActive = true;
-
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.style.position = 'absolute';
-        input.style.left = (canvas.offsetLeft + x) + 'px';
-        input.style.top = (canvas.offsetTop + y) + 'px';
-        input.style.fontSize = (brushSize * 4) + 'px';
-        input.style.color = currentColor;
-        input.style.background = 'transparent';
-        input.style.border = '1px solid ' + currentColor;
-        input.style.outline = 'none';
-        input.style.zIndex = 1000;
-        input.style.padding = '2px 5px';
-        input.style.width = '150px';
-
-        document.body.appendChild(input);
-        input.focus();
-
-        input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            const text = input.value.trim();
-            if (text.length > 0) {
-              drawText(x, y + brushSize * 4, text, currentColor, brushSize);
-              socket.emit('whiteboard-text', { roomId, x, y: y + brushSize * 4, text, color: currentColor, size: brushSize });
-            }
-            document.body.removeChild(input);
-            textInputActive = false;
-          } else if (e.key === 'Escape') {
-            document.body.removeChild(input);
-            textInputActive = false;
-          }
         });
       }
 
-      // Socket listeners for whiteboard events
-      socket.on('whiteboard-draw', data => {
-        if (data.roomId !== roomId) return;
-        drawLine(data.fromX, data.fromY, data.toX, data.toY, data.color, data.size);
-      });
+      return pc;
+    }
 
-      socket.on('whiteboard-shape', data => {
-        if (data.roomId !== roomId) return;
-        const s = data.shapeData;
-        switch (s.type) {
-          case 'line':
-            drawLine(s.startX, s.startY, s.endX, s.endY, s.color, s.size);
-            break;
-          case 'rectangle':
-            drawRect(s.startX, s.startY, s.width, s.height, s.color, s.size);
-            break;
-          case 'circle':
-            drawCircle(s.centerX, s.centerY, s.radius, s.color, s.size);
-            break;
+    // Chat message send
+    function sendMessage(msg) {
+      if (!msg || !msg.trim()) return;
+      socket.emit('chat-message', { room, msg });
+      chatBox.innerHTML += `<div style="text-align:right; color:#7fbf7f;"><b>You:</b> ${msg}</div>`;
+      chatBox.scrollTop = chatBox.scrollHeight;
+      document.getElementById('chatInput').value = '';
+    }
+
+    // Control functions
+    function toggleAudio() {
+      if (!localStream) return;
+      const audioTrack = localStream.getAudioTracks()[0];
+      audioTrack.enabled = !audioTrack.enabled;
+      audioMuted = !audioTrack.enabled;
+      
+      const btn = document.getElementById('micBtn');
+      const icon = btn.querySelector('i');
+      const status = document.getElementById('localMicStatus');
+      
+      if (audioMuted) {
+        btn.classList.add('muted');
+        icon.className = 'fas fa-microphone-slash';
+        btn.title = 'Unmute';
+        status.style.display = 'flex';
+      } else {
+        btn.classList.remove('muted');
+        icon.className = 'fas fa-microphone';
+        btn.title = 'Mute';
+        status.style.display = 'none';
+      }
+    }
+
+    function toggleVideo() {
+      if (!localStream) return;
+      const videoTrack = localStream.getVideoTracks()[0];
+      videoTrack.enabled = !videoTrack.enabled;
+      videoOn = videoTrack.enabled;
+      
+      const btn = document.getElementById('videoBtn');
+      const icon = btn.querySelector('i');
+      const status = document.getElementById('localVideoStatus');
+      
+      if (videoOn) {
+        btn.classList.remove('off');
+        icon.className = 'fas fa-video';
+        btn.title = 'Turn off camera';
+        status.style.display = 'none';
+      } else {
+        btn.classList.add('off');
+        icon.className = 'fas fa-video-slash';
+        btn.title = 'Turn on camera';
+        status.style.display = 'flex';
+      }
+    }
+
+    async function startScreenShare() {
+      try {
+        if (!screenSharing) {
+          const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+          const screenTrack = screenStream.getVideoTracks()[0];
+
+          // Replace track on each peer connection
+          for (const userId in peers) {
+            const sender = peers[userId].getSenders().find(s => s.track && s.track.kind === 'video');
+            if (sender) sender.replaceTrack(screenTrack);
+          }
+
+          // Update local video preview
+          localVideo.srcObject = screenStream;
+          screenSharing = true;
+          
+          const btn = document.getElementById('screenBtn');
+          const icon = btn.querySelector('i');
+          btn.classList.add('active');
+          icon.className = 'fas fa-stop';
+          btn.title = 'Stop sharing';
+
+          screenTrack.onended = () => {
+            // Restore original camera video track
+            for (const userId in peers) {
+              const sender = peers[userId].getSenders().find(s => s.track && s.track.kind === 'video');
+              if (sender) sender.replaceTrack(localStream.getVideoTracks()[0]);
+            }
+            localVideo.srcObject = localStream;
+            screenSharing = false;
+            btn.classList.remove('active');
+            icon.className = 'fas fa-desktop';
+            btn.title = 'Share screen';
+          };
         }
-      });
+      } catch (e) {
+        alert('Screen share failed or cancelled.');
+      }
+    }
 
-      socket.on('whiteboard-text', data => {
-        if (data.roomId !== roomId) return;
-        drawText(data.x, data.y, data.text, data.color, data.size);
-      });
+    function endCall() {
+      if (confirm('Are you sure you want to end the call?')) {
+        for (const userId in peers) {
+          peers[userId].close();
+          delete peers[userId];
+          const videoEl = document.getElementById('remoteVideo-' + userId);
+          if (videoEl) {
+            videoEl.srcObject = null;
+            videoEl.parentNode.removeChild(videoEl);
+          }
+        }
+        if (localStream) {
+          localStream.getTracks().forEach(track => track.stop());
+        }
+        socket.emit('leave', room);
+        window.location.reload();
+      }
+    }
 
-      socket.on('whiteboard-clear', rId => {
-        if (rId !== roomId) return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      });
+    // Call timer
+    function startTimer() {
+      startTime = Date.now();
+      setInterval(() => {
+        const diff = Date.now() - startTime;
+        const mins = Math.floor(diff / 60000);
+        const secs = Math.floor((diff % 60000) / 1000);
+        document.getElementById('callTimer').innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
+      }, 1000);
+    }
 
+    // Whiteboard drawing and tools
+// Whiteboard drawing and tools
+document.addEventListener('DOMContentLoaded', () => {
+  const canvas = document.getElementById('whiteboard');
+  const ctx = canvas.getContext('2d');
+  const clearBtn = document.getElementById('clearBtn');
+  const statusEl = document.getElementById('status');
+  const colorPicker = document.getElementById('colorPicker');
+  const brushSizeInput = document.getElementById('brushSize');
+  const toolSelect = document.getElementById('toolSelect');
+
+  const roomId = room;
+
+  let drawing = false;
+  let startX = 0;
+  let startY = 0;
+  let currentTool = toolSelect.value;
+  let currentColor = colorPicker.value;
+  let brushSize = parseInt(brushSizeInput.value, 10);
+  let eraserEnabled = false;
+  let textInputActive = false;
+
+  // Utility to get mouse position relative to canvas
+  function getMousePos(evt) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: evt.clientX - rect.left,
+      y: evt.clientY - rect.top
+    };
+  }
+
+  // Draw on canvas based on tool
+  function draw(x, y) {
+    if (currentTool === 'pencil' || currentTool === 'brush') {
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      // Save last point for emitting
+      ctx.lastX = x;
+      ctx.lastY = y;
+    } else if (currentTool === 'eraser') {
+      ctx.clearRect(x - brushSize / 2, y - brushSize / 2, brushSize, brushSize);
+      ctx.lastX = x;
+      ctx.lastY = y;
+    } else if (currentTool === 'line') {
+      // For line tool, just draw once on mouseup, no continuous drawing here
+    } else if (currentTool === 'rectangle') {
+      // For rectangle tool, drawing happens on mouseup
+    } else if (currentTool === 'circle') {
+      // Circle drawing on mouseup
+    } else if (currentTool === 'text' && textInputActive) {
+      // Text input handled on mouseup
+    }
+  }
+
+  // Mouse down event
+  canvas.addEventListener('mousedown', (evt) => {
+    if (textInputActive) return;
+    const pos = getMousePos(evt);
+    drawing = true;
+    startX = pos.x;
+    startY = pos.y;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.strokeStyle = currentColor;
+    ctx.lineWidth = brushSize;
+  });
+
+  // Mouse move event for pencil/brush/eraser
+  canvas.addEventListener('mousemove', (evt) => {
+    if (!drawing) return;
+    const pos = getMousePos(evt);
+    if (currentTool === 'pencil' || currentTool === 'brush' || currentTool === 'eraser') {
+      draw(pos.x, pos.y);
+    }
+  });
+
+  // Mouse up event
+  canvas.addEventListener('mouseup', (evt) => {
+    if (!drawing) return;
+    drawing = false;
+    const pos = getMousePos(evt);
+    ctx.closePath();
+
+    // For tools that require final shape on mouseup:
+    if (currentTool === 'line') {
+      ctx.beginPath();
+      ctx.strokeStyle = currentColor;
+      ctx.lineWidth = brushSize;
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      ctx.closePath();
+    } else if (currentTool === 'rectangle') {
+      ctx.beginPath();
+      ctx.strokeStyle = currentColor;
+      ctx.lineWidth = brushSize;
+      ctx.rect(startX, startY, pos.x - startX, pos.y - startY);
+      ctx.stroke();
+      ctx.closePath();
+    } else if (currentTool === 'circle') {
+      const radius = Math.sqrt(Math.pow(pos.x - startX, 2) + Math.pow(pos.y - startY, 2));
+      ctx.beginPath();
+      ctx.strokeStyle = currentColor;
+      ctx.lineWidth = brushSize;
+      ctx.arc(startX, startY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.closePath();
+    } else if (currentTool === 'text') {
+      const text = prompt('Enter text:');
+      if (text) {
+        ctx.fillStyle = currentColor;
+        ctx.font = `${brushSize * 5}px sans-serif`;
+        ctx.fillText(text, pos.x, pos.y);
+      }
+      textInputActive = false;
+    }
+
+    // Emit drawing data to other participants
+    socket.emit('whiteboard-draw', {
+      room: roomId,
+      tool: currentTool,
+      color: currentColor,
+      size: brushSize,
+      startX: startX,
+      startY: startY,
+      endX: pos.x,
+      endY: pos.y
     });
+  });
 
-</script>
+  // Mouse leave event cancels drawing
+  canvas.addEventListener('mouseleave', () => {
+    if (drawing) {
+      drawing = false;
+      ctx.closePath();
+    }
+  });
 
+  // Tool change event
+  toolSelect.addEventListener('change', (evt) => {
+    currentTool = evt.target.value;
+    statusEl.textContent = `Selected Tool: ${currentTool}`;
+    if (currentTool === 'eraser') {
+      eraserEnabled = true;
+      colorPicker.disabled = true;
+    } else {
+      eraserEnabled = false;
+      colorPicker.disabled = false;
+    }
+    if (currentTool === 'text') {
+      textInputActive = true;
+    } else {
+      textInputActive = false;
+    }
+  });
+
+  // Color change event
+  colorPicker.addEventListener('input', (evt) => {
+    currentColor = evt.target.value;
+    ctx.strokeStyle = currentColor;
+    ctx.fillStyle = currentColor;
+  });
+
+  // Brush size change event
+  brushSizeInput.addEventListener('input', (evt) => {
+    brushSize = parseInt(evt.target.value, 10);
+    ctx.lineWidth = brushSize;
+  });
+
+  // Clear button event
+  clearBtn.addEventListener('click', () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    socket.emit('whiteboard-clear', { room: roomId });
+  });
+
+  // Receive drawing from others
+  socket.on('whiteboard-draw', ({ tool, color, size, startX, startY, endX, endY }) => {
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = size;
+
+    if (tool === 'pencil' || tool === 'brush') {
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      ctx.closePath();
+    } else if (tool === 'eraser') {
+      ctx.clearRect(endX - size / 2, endY - size / 2, size, size);
+    } else if (tool === 'line') {
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      ctx.closePath();
+    } else if (tool === 'rectangle') {
+      ctx.beginPath();
+      ctx.rect(startX, startY, endX - startX, endY - startY);
+      ctx.stroke();
+      ctx.closePath();
+    } else if (tool === 'circle') {
+      const radius = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+      ctx.beginPath();
+      ctx.arc(startX, startY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.closePath();
+    } else if (tool === 'text') {
+      // Note: For text, no prompt on other clients. You can extend to send text content.
+      // For now, just ignore or add placeholder:
+      ctx.fillText('[Text]', endX, endY);
+    }
+  });
+
+  // Clear whiteboard on event
+  socket.on('whiteboard-clear', ({ room }) => {
+    if (room === roomId) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  });
+
+});
+  </script>
 </body>
 </html>
