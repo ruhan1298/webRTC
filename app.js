@@ -81,64 +81,108 @@ const room = require('./model/room');
 // Removed duplicate declaration of io
 
 const user = require('./model/user');
+const { Socket } = require('dgram');
 // user.sync({force:true})
 // Store room information
-const rooms = {}; // { roomName: Set(socketId) }
+const rooms = {}; // { roomId: Set(socketIds) }
+const roomCreators = {}; // { roomId: socketId }
 
-io.on('connection', socket => {
+io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('join', room => {
-    socket.join(room);
+  socket.on('join', (roomId) => {
+    socket.join(roomId);
+    console.log(`${socket.id} joined ${roomId}`);
 
-    if (!rooms[room]) rooms[room] = new Set();
-    rooms[room].add(socket.id);
+    // Set creator if not already set
+    if (!roomCreators[roomId]) {
+      roomCreators[roomId] = socket.id;
+    }
 
-    // Send existing users in the room to the new user
-    const otherUsers = Array.from(rooms[room]).filter(id => id !== socket.id);
+    // Emit existing users to new user (excluding themselves)
+    const otherUsers = [...io.sockets.adapter.rooms.get(roomId) || []].filter(id => id !== socket.id);
     socket.emit('all-users', otherUsers);
 
-    // Notify others that a new user joined
-    socket.to(room).emit('user-joined', socket.id);
+    // Notify if this user is the creator
+    socket.emit('is-creator', socket.id === roomCreators[roomId]);
 
-    // Relay offers, answers, and ICE candidates
-    socket.on('offer', ({ to, offer }) => {
-      io.to(to).emit('offer', { from: socket.id, offer });
-    });
+    // Notify others of new user
+    socket.to(roomId).emit('user-joined', socket.id);
+  });
 
-    socket.on('answer', ({ to, answer }) => {
-      io.to(to).emit('answer', { from: socket.id, answer });
-    });
+  socket.on('offer', ({ to, offer }) => {
+    io.to(to).emit('offer', { from: socket.id, offer });
+  });
 
-    socket.on('ice-candidate', ({ to, candidate }) => {
-      io.to(to).emit('ice-candidate', { from: socket.id, candidate });
-    });
+  socket.on('answer', ({ to, answer }) => {
+    io.to(to).emit('answer', { from: socket.id, answer });
+  });
 
-    socket.on('chat-message', ({ room, msg }) => {
-      // Broadcast chat message to the room
-      io.to(room).emit('chat-message', { from: socket.id, msg });
-    });
+  socket.on('ice-candidate', ({ to, candidate }) => {
+    io.to(to).emit('ice-candidate', { from: socket.id, candidate });
+  });
 
-    socket.on('leave', room => {
-      socket.leave(room);
-      if (rooms[room]) {
-        rooms[room].delete(socket.id);
-        socket.to(room).emit('user-left', socket.id);
-      }
-    });
+  socket.on('chat-message', ({ room, msg }) => {
+    socket.to(room).emit('chat-message', { from: socket.id, msg });
+  });
 
-    socket.on('disconnect', () => {
-      console.log('User disconnected:', socket.id);
-      // Remove from all rooms and notify
-      for (const roomName in rooms) {
-        if (rooms[roomName].has(socket.id)) {
-          rooms[roomName].delete(socket.id);
-          socket.to(roomName).emit('user-left', socket.id);
-        }
+  socket.on('leave', (roomId) => {
+    socket.leave(roomId);
+    socket.to(roomId).emit('user-left', socket.id);
+
+    if (roomCreators[roomId] === socket.id) {
+      delete roomCreators[roomId];
+    }
+  });
+
+  // ✅ FIXED: Whiteboard draw - send full draw data
+  socket.on('whiteboard-draw', (data) => {
+    const { roomId } = data;
+    if (roomCreators[roomId] === socket.id) {
+      socket.to(roomId).emit('whiteboard-draw', data); // send entire drawing info
+    }
+  });
+    // ✅ FIXED: Whiteboard draw - send full draw data
+  socket.on('whiteboard-shape', (data) => {
+    const { roomId } = data;
+    if (roomCreators[roomId] === socket.id) {
+      socket.to(roomId).emit('whiteboard-shape', data); // send entire drawing info
+    }
+  });
+  socket.on('whiteboard-text', (data) => {
+    const { roomId } = data;
+    if (roomCreators[roomId] === socket.id) {
+      socket.to(roomId).emit('whiteboard-text', data); // send entire text info
+    }
+  }
+  );
+
+
+
+  // ✅ Whiteboard clear
+  socket.on('whiteboard-clear', (roomId) => {
+    if (roomCreators[roomId] === socket.id) {
+      socket.to(roomId).emit('whiteboard-clear');
+    }
+  });
+
+  socket.on('disconnecting', () => {
+    const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
+    rooms.forEach(roomId => {
+      socket.to(roomId).emit('user-left', socket.id);
+
+      if (roomCreators[roomId] === socket.id) {
+        delete roomCreators[roomId];
       }
     });
   });
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
 });
+
+
 // ===================== ROUTES ===================== //
 // app.get('/calls/:userId', async (req, res) => {
 //   try {
@@ -176,7 +220,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const PORT = 3000;
+const PORT = 3002;
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });

@@ -7,6 +7,9 @@ const passport =require('passport')
 router.get('/', function(req, res, next) {
   res.render('calling', { title: 'Express' });
 });
+router.get('/canvas', function(req, res, next) {
+  res.render('canvas', { title: 'Express' });
+});
 
 router.get('/login', function(req, res, next) {
   res.render('Login');

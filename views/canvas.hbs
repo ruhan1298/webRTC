@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Simple Fabric.js Whiteboard with Toolbar</title>
+<style>
+  #canvas-wrapper {
+    border: 1px solid #ccc;
+    width: 800px;
+    margin: 20px auto;
+  }
+  canvas {
+    border: 1px solid #999;
+  }
+  #toolbar {
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  button, input[type=color], input[type=range] {
+    margin: 0 5px;
+    vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button id="pencil">Pencil</button>
+  <button id="eraser">Eraser</button>
+  <label>Color: <input type="color" id="colorPicker" value="#000000"></label>
+  <label>Brush Size: <input type="range" id="brushSize" min="1" max="50" value="5"></label>
+  <button id="clear">Clear</button>
+</div>
+
+<div id="canvas-wrapper">
+  <canvas id="c" width="800" height="600"></canvas>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.2.4/fabric.min.js"></script>
+<script>
+  const canvas = new fabric.Canvas('c');
+  canvas.isDrawingMode = true;
+
+  // Default brush settings
+  canvas.freeDrawingBrush.color = '#000000';
+  canvas.freeDrawingBrush.width = 5;
+
+  // Toolbar elements
+  const pencilBtn = document.getElementById('pencil');
+  const eraserBtn = document.getElementById('eraser');
+  const colorPicker = document.getElementById('colorPicker');
+  const brushSize = document.getElementById('brushSize');
+  const clearBtn = document.getElementById('clear');
+
+  pencilBtn.onclick = () => {
+    canvas.isDrawingMode = true;
+    canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+    canvas.freeDrawingBrush.color = colorPicker.value;
+    canvas.freeDrawingBrush.width = brushSize.value;
+  };
+
+  eraserBtn.onclick = () => {
+    canvas.isDrawingMode = true;
+    // Eraser using white color (background color)
+    canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+    canvas.freeDrawingBrush.color = '#ffffff';
+    canvas.freeDrawingBrush.width = brushSize.value;
+  };
+
+  colorPicker.onchange = () => {
+    if(canvas.isDrawingMode && !(canvas.freeDrawingBrush instanceof fabric.EraserBrush)){
+      canvas.freeDrawingBrush.color = colorPicker.value;
+    }
+  };
+
+  brushSize.oninput = () => {
+    canvas.freeDrawingBrush.width = brushSize.value;
+  };
+
+  clearBtn.onclick = () => {
+    canvas.clear();
+  };
+</script>
+
+</body>
+</html>
