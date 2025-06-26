@@ -231,6 +231,28 @@
       display: flex;
       flex-direction: column;
     }
+    .close-panel-btn {
+  display: none;
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  font-size: 18px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  z-index: 1001;
+}
+
+@media (max-width: 1024px) {
+  .close-panel-btn {
+    display: block;
+  }
+}
+
+
 
     .panel-tabs {
       display: flex;
@@ -483,7 +505,7 @@
   </style>
 </head>
 <body>
-  <div class="call-container">
+<div id="app">
     <!-- Header -->
     <div class="header">
       <div class="meeting-info">
@@ -526,27 +548,40 @@
         </div>
 
         <!-- Control Bar -->
-        <div class="control-bar">
-          <button class="control-btn mic muted" id="micBtn" onclick="toggleAudio()" title="Unmute">
-            <i class="fas fa-microphone-slash"></i>
-          </button>
-          <button class="control-btn video" id="videoBtn" onclick="toggleVideo()" title="Turn off camera">
-            <i class="fas fa-video"></i>
-          </button>
-          <button class="control-btn screen" id="screenBtn" onclick="startScreenShare()" title="Share screen">
-            <i class="fas fa-desktop"></i>
-          </button>
-          <button class="control-btn settings" onclick="togglePanel()" title="Toggle panel">
-            <i class="fas fa-cog"></i>
-          </button>
-          <button class="control-btn end" onclick="endCall()" title="End call">
-            <i class="fas fa-phone-slash"></i>
-          </button>
-        </div>
+<!-- Control Bar -->
+<div class="control-bar">
+  <button class="control-btn mic muted" id="micBtn" onclick="toggleAudio()" title="Unmute">
+    <i class="fas fa-microphone-slash"></i>
+  </button>
+  <button class="control-btn video" id="videoBtn" onclick="toggleVideo()" title="Turn off camera">
+    <i class="fas fa-video"></i>
+  </button>
+  <button class="control-btn screen" id="screenBtn" onclick="startScreenShare()" title="Share screen">
+    <i class="fas fa-desktop"></i>
+  </button>
+  <button class="control-btn settings" onclick="togglePanel()" title="Toggle panel">
+    <i class="fas fa-cog"></i>
+  </button>
+  <button class="control-btn end" onclick="endCall()" title="End call">
+    <i class="fas fa-phone-slash"></i>
+  </button>
+<button id="startRecordBtn" onclick="startRecording()">🎥 Start Recording</button>
+<button id="stopRecordBtn" onclick="stopRecording()" style="display:none;">🛑 Stop Recording</button>
+<a id="downloadLink" href="#" style="display: none;" download>⬇️ Download Recording</a>
+
+
+
+</div>
+
+<!-- Optional Preview and Recorded Video Display -->
+
+     
       </div>
 
       <!-- Right Panel -->
       <div class="right-panel" id="rightPanel">
+        <button class="close-panel-btn" onclick="togglePanel()">✕</button>
+
         <div class="panel-tabs">
           <button class="tab-btn active" onclick="switchTab('chat')">
             <i class="fas fa-comments"></i> Chat
@@ -608,13 +643,15 @@
     const videosContainer = document.querySelector('.videos');
     const chatBox = document.getElementById('chatBox');
 
-    let localStream;
-    const peers = {}; // socketId -> RTCPeerConnection
+
     let startTime;
     let audioMuted = false;
     let videoOn = true;
     let screenSharing = false;
     let participantCount = 0;
+    let localStream;
+    const peers = {}; // Store peer connections by userId
+
 
     const config = {
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
@@ -905,8 +942,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const colorPicker = document.getElementById('colorPicker');
   const brushSizeInput = document.getElementById('brushSize');
   const toolSelect = document.getElementById('toolSelect');
-
-  const roomId = room;
+  
+  // Fix: Define roomId properly (get from URL params or set manually)
+  const urlParams = new URLSearchParams(window.location.search);
+  const roomId = urlParams.get('room') || 'default-room';
 
   let drawing = false;
   let startX = 0;
@@ -914,10 +953,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentTool = toolSelect.value;
   let currentColor = colorPicker.value;
   let brushSize = parseInt(brushSizeInput.value, 10);
-  let eraserEnabled = false;
   let textInputActive = false;
+  let drawingPath = []; // Fix: Store path for continuous drawing
 
-  // Utility to get mouse position relative to canvas
   function getMousePos(evt) {
     const rect = canvas.getBoundingClientRect();
     return {
@@ -926,84 +964,73 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  // Draw on canvas based on tool
-  function draw(x, y) {
-    if (currentTool === 'pencil' || currentTool === 'brush') {
-      ctx.lineTo(x, y);
-      ctx.stroke();
-      // Save last point for emitting
-      ctx.lastX = x;
-      ctx.lastY = y;
-    } else if (currentTool === 'eraser') {
-      ctx.clearRect(x - brushSize / 2, y - brushSize / 2, brushSize, brushSize);
-      ctx.lastX = x;
-      ctx.lastY = y;
-    } else if (currentTool === 'line') {
-      // For line tool, just draw once on mouseup, no continuous drawing here
-    } else if (currentTool === 'rectangle') {
-      // For rectangle tool, drawing happens on mouseup
-    } else if (currentTool === 'circle') {
-      // Circle drawing on mouseup
-    } else if (currentTool === 'text' && textInputActive) {
-      // Text input handled on mouseup
-    }
-  }
-
-  // Mouse down event
   canvas.addEventListener('mousedown', (evt) => {
     if (textInputActive) return;
     const pos = getMousePos(evt);
     drawing = true;
     startX = pos.x;
     startY = pos.y;
+    
+    // Fix: Initialize drawing path
+    drawingPath = [{x: startX, y: startY}];
+    
     ctx.beginPath();
     ctx.moveTo(startX, startY);
     ctx.strokeStyle = currentColor;
     ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
   });
 
-  // Mouse move event for pencil/brush/eraser
   canvas.addEventListener('mousemove', (evt) => {
     if (!drawing) return;
     const pos = getMousePos(evt);
-    if (currentTool === 'pencil' || currentTool === 'brush' || currentTool === 'eraser') {
-      draw(pos.x, pos.y);
+    
+    if (['pencil', 'brush', 'eraser'].includes(currentTool)) {
+      // Fix: Add point to path for continuous drawing
+      drawingPath.push({x: pos.x, y: pos.y});
+      
+      if (currentTool === 'eraser') {
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, brushSize / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+      }
     }
   });
 
-  // Mouse up event
   canvas.addEventListener('mouseup', (evt) => {
     if (!drawing) return;
     drawing = false;
     const pos = getMousePos(evt);
     ctx.closePath();
+    ctx.globalCompositeOperation = 'source-over';
 
-    // For tools that require final shape on mouseup:
+    let text = undefined;
+
     if (currentTool === 'line') {
       ctx.beginPath();
-      ctx.strokeStyle = currentColor;
-      ctx.lineWidth = brushSize;
       ctx.moveTo(startX, startY);
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
       ctx.closePath();
     } else if (currentTool === 'rectangle') {
       ctx.beginPath();
-      ctx.strokeStyle = currentColor;
-      ctx.lineWidth = brushSize;
       ctx.rect(startX, startY, pos.x - startX, pos.y - startY);
       ctx.stroke();
       ctx.closePath();
     } else if (currentTool === 'circle') {
-      const radius = Math.sqrt(Math.pow(pos.x - startX, 2) + Math.pow(pos.y - startY, 2));
+      const radius = Math.hypot(pos.x - startX, pos.y - startY);
       ctx.beginPath();
-      ctx.strokeStyle = currentColor;
-      ctx.lineWidth = brushSize;
       ctx.arc(startX, startY, radius, 0, Math.PI * 2);
       ctx.stroke();
       ctx.closePath();
     } else if (currentTool === 'text') {
-      const text = prompt('Enter text:');
+      text = prompt('Enter text:');
       if (text) {
         ctx.fillStyle = currentColor;
         ctx.font = `${brushSize * 5}px sans-serif`;
@@ -1012,78 +1039,87 @@ document.addEventListener('DOMContentLoaded', () => {
       textInputActive = false;
     }
 
-    // Emit drawing data to other participants
-    socket.emit('whiteboard-draw', {
-      room: roomId,
+    // Fix: Send complete drawing data
+    const drawData = {
+      roomId,
       tool: currentTool,
       color: currentColor,
       size: brushSize,
-      startX: startX,
-      startY: startY,
+      startX,
+      startY,
       endX: pos.x,
-      endY: pos.y
-    });
+      endY: pos.y,
+      path: drawingPath, // Fix: Include path for continuous drawing
+      text
+    };
+
+    socket.emit('whiteboard-draw', drawData);
+    drawingPath = []; // Reset path
   });
 
-  // Mouse leave event cancels drawing
   canvas.addEventListener('mouseleave', () => {
     if (drawing) {
       drawing = false;
       ctx.closePath();
+      ctx.globalCompositeOperation = 'source-over';
     }
   });
 
-  // Tool change event
   toolSelect.addEventListener('change', (evt) => {
     currentTool = evt.target.value;
     statusEl.textContent = `Selected Tool: ${currentTool}`;
-    if (currentTool === 'eraser') {
-      eraserEnabled = true;
-      colorPicker.disabled = true;
-    } else {
-      eraserEnabled = false;
-      colorPicker.disabled = false;
-    }
-    if (currentTool === 'text') {
-      textInputActive = true;
-    } else {
-      textInputActive = false;
-    }
+    textInputActive = currentTool === 'text';
+    colorPicker.disabled = currentTool === 'eraser';
   });
 
-  // Color change event
   colorPicker.addEventListener('input', (evt) => {
     currentColor = evt.target.value;
     ctx.strokeStyle = currentColor;
     ctx.fillStyle = currentColor;
   });
 
-  // Brush size change event
   brushSizeInput.addEventListener('input', (evt) => {
     brushSize = parseInt(evt.target.value, 10);
     ctx.lineWidth = brushSize;
   });
 
-  // Clear button event
   clearBtn.addEventListener('click', () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    socket.emit('whiteboard-clear', { room: roomId });
+    socket.emit('whiteboard-clear', roomId);
   });
 
-  // Receive drawing from others
-  socket.on('whiteboard-draw', ({ tool, color, size, startX, startY, endX, endY }) => {
+  // Fix: Handle incoming draw events properly
+  socket.on('whiteboard-draw', (data) => {
+    const { tool, color, size, startX, startY, endX, endY, text, path } = data;
+    
     ctx.strokeStyle = color;
     ctx.fillStyle = color;
     ctx.lineWidth = size;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     if (tool === 'pencil' || tool === 'brush') {
-      ctx.beginPath();
-      ctx.moveTo(startX, startY);
-      ctx.lineTo(endX, endY);
-      ctx.stroke();
-      ctx.closePath();
+      // Fix: Draw complete path for continuous lines
+      if (path && path.length > 1) {
+        ctx.beginPath();
+        ctx.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) {
+          ctx.lineTo(path[i].x, path[i].y);
+        }
+        ctx.stroke();
+        ctx.closePath();
+      }
     } else if (tool === 'eraser') {
-      ctx.clearRect(endX - size / 2, endY - size / 2, size, size);
+      // Fix: Handle eraser path
+      if (path && path.length > 0) {
+        ctx.globalCompositeOperation = 'destination-out';
+        for (let point of path) {
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalCompositeOperation = 'source-over';
+      }
     } else if (tool === 'line') {
       ctx.beginPath();
       ctx.moveTo(startX, startY);
@@ -1096,26 +1132,72 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.stroke();
       ctx.closePath();
     } else if (tool === 'circle') {
-      const radius = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+      const radius = Math.hypot(endX - startX, endY - startY);
       ctx.beginPath();
       ctx.arc(startX, startY, radius, 0, Math.PI * 2);
       ctx.stroke();
       ctx.closePath();
-    } else if (tool === 'text') {
-      // Note: For text, no prompt on other clients. You can extend to send text content.
-      // For now, just ignore or add placeholder:
-      ctx.fillText('[Text]', endX, endY);
+    } else if (tool === 'text' && text) {
+      ctx.font = `${size * 5}px sans-serif`;
+      ctx.fillText(text, endX, endY);
     }
   });
 
-  // Clear whiteboard on event
-  socket.on('whiteboard-clear', ({ room }) => {
-    if (room === roomId) {
+  socket.on('whiteboard-clear', (receivedRoomId) => {
+    if (receivedRoomId === roomId) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
   });
-
 });
-  </script>
+  function togglePanel() {
+    const panel = document.getElementById('rightPanel');
+    panel.classList.toggle('open');
+  }
+
+  function switchTab(tab) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(tabContent => tabContent.classList.remove('active'));
+
+    if (tab === 'chat') {
+      document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+      document.getElementById('chatTab').classList.add('active');
+    } else if (tab === 'whiteboard') {
+      document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+      document.getElementById('whiteboardTab').classList.add('active');
+    }
+
+    // Optional: Auto-close panel on mobile after switching tab
+    if (window.innerWidth <= 1024) {
+      togglePanel();
+    }
+  }
+function startRecording() {
+  socket.emit('start-recording', { room });
+  document.getElementById('startRecordBtn').style.display = 'none';
+  document.getElementById('stopRecordBtn').style.display = 'inline-block';
+}
+
+function stopRecording() {
+  socket.emit('stop-recording', { room });
+  document.getElementById('stopRecordBtn').style.display = 'none';
+  document.getElementById('startRecordBtn').style.display = 'inline-block';
+}
+
+socket.on('recording-available', (filename) => {
+  const link = document.getElementById('downloadLink');
+  link.href = `/recordings/${filename}`;
+  link.innerText = '⬇️ Download Recording';
+  link.style.display = 'inline-block';
+});
+
+
+
+
+
+
+
+  
+</script>
+
 </body>
 </html>
